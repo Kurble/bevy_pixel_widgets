@@ -22,10 +22,18 @@ mod event;
 
 pub mod prelude {
     pub use super::{UiComponent, UiComponents, UiPlugin};
-    pub use pixel_widgets::prelude::*;
+    pub use pixel_widgets::{
+        layout::Rectangle,
+        stylesheet::Style,
+        tracker::ManagedState,
+        widget::IntoNode,
+        Command,
+        Model,
+        Ui
+    };
 }
 
-pub use pixel_widgets;
+pub use pixel_widgets::*;
 
 pub struct UiPlugin<M: Model + Send + Sync>(PhantomData<M>);
 
