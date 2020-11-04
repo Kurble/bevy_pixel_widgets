@@ -1,5 +1,6 @@
-use bevy::input::keyboard::{ElementState, KeyboardInput};
+use bevy::input::keyboard::{KeyboardInput};
 use bevy::input::mouse::{MouseButtonInput, MouseWheel};
+use bevy::input::ElementState;
 use bevy::input::prelude::*;
 use bevy::prelude::*;
 use bevy::window::WindowResized;
@@ -110,7 +111,7 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
     }
 
-    for mut ui in &mut ui.iter() {
+    for mut ui in ui.iter_mut() {
         let &mut UiComponent {
             ref mut ui,
             ref mut receiver,

@@ -182,53 +182,20 @@ fn render_ui<M: Model + Send + Sync>(
         .get_or_insert_with(|| render_resource_context.create_sampler(&SamplerDescriptor::default()));
 
     let pipeline = if let Some(pipeline) =
-        pipeline_compiler.get_specialized_pipeline(UI_PIPELINE_HANDLE, &PipelineSpecialization::default())
+        pipeline_compiler.get_specialized_pipeline(&UI_PIPELINE_HANDLE, &PipelineSpecialization::default())
     {
         pipeline
     } else {
-        let mut descriptors = VertexBufferDescriptors::default();
-        descriptors.set(VertexBufferDescriptor {
-            name: "Vertex".into(),
-            stride: std::mem::size_of::<Vertex>() as u64,
-            step_mode: InputStepMode::Vertex,
-            attributes: vec![
-                VertexAttributeDescriptor {
-                    name: "Vertex_Position".into(),
-                    offset: 0,
-                    format: VertexFormat::Float2,
-                    shader_location: 0,
-                },
-                VertexAttributeDescriptor {
-                    name: "Vertex_Uv".into(),
-                    offset: 8,
-                    format: VertexFormat::Float2,
-                    shader_location: 1,
-                },
-                VertexAttributeDescriptor {
-                    name: "Vertex_Color".into(),
-                    offset: 16,
-                    format: VertexFormat::Float4,
-                    shader_location: 2,
-                },
-                VertexAttributeDescriptor {
-                    name: "Vertex_Mode".into(),
-                    offset: 32,
-                    format: VertexFormat::Uint,
-                    shader_location: 3,
-                },
-            ],
-        });
         pipeline_compiler.compile_pipeline(
             &**render_resource_context,
             &mut pipelines,
             &mut shaders,
-            UI_PIPELINE_HANDLE,
-            &descriptors,
+            &UI_PIPELINE_HANDLE,
             &PipelineSpecialization::default(),
         )
     };
 
-    draw.set_pipeline(pipeline);
+    draw.set_pipeline(&pipeline);
     draw.set_vertex_buffer(0, vertex_buffer.unwrap(), 0);
 
     let bind_group_descriptor_id = pipelines.get(&pipeline).unwrap().get_layout().unwrap().bind_groups[0].id;

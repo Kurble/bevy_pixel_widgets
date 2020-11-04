@@ -43,7 +43,7 @@ impl Model for Counter {
 
 pub fn main() {
     App::build()
-        .add_default_plugins()
+        .add_plugins(DefaultPlugins)
         .add_plugin(UiPlugin::<Counter>::default())
         .add_startup_system(startup.system())
         .run();
