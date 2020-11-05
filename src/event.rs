@@ -7,7 +7,7 @@ use bevy::window::WindowResized;
 use pixel_widgets::event::{Event, Key, Modifiers};
 use pixel_widgets::prelude::*;
 
-use crate::UiComponent;
+use crate::Ui;
 
 pub struct State {
     keyboard: EventReader<KeyboardInput>,
@@ -38,12 +38,14 @@ impl Default for State {
 
 pub fn update_ui<M: Model + Send + Sync>(
     mut state: Local<State>,
+    windows: Res<Windows>,
     keyboard_events: Res<Events<KeyboardInput>>,
     mouse_button_events: Res<Events<MouseButtonInput>>,
     cursor_moved_events: Res<Events<CursorMoved>>,
     mouse_wheel_events: Res<Events<MouseWheel>>,
     window_resize_events: Res<Events<WindowResized>>,
-    mut ui: Query<&mut UiComponent<M>>) {
+    mut ui: Query<&mut Ui<M>>,
+) {
     let mut events = Vec::new();
 
     for event in state.window_resize.iter(&window_resize_events) {
@@ -89,7 +91,8 @@ pub fn update_ui<M: Model + Send + Sync>(
     }
 
     for event in state.cursor_move.iter(&cursor_moved_events) {
-        events.push(Event::Cursor(event.position.x(), event.position.y()));
+        let window = windows.get_primary().unwrap();
+        events.push(Event::Cursor(event.position.x(), window.height() as f32 - event.position.y()));
     }
 
     for event in state.mouse_wheel.iter(&mouse_wheel_events) {
@@ -112,7 +115,7 @@ pub fn update_ui<M: Model + Send + Sync>(
     }
 
     for mut ui in ui.iter_mut() {
-        let &mut UiComponent {
+        let &mut Ui {
             ref mut ui,
             ref mut receiver,
             ..

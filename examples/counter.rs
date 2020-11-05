@@ -20,12 +20,10 @@ impl Model for Counter {
         match message {
             Message::UpPressed => {
                 self.value += 1;
-                println!("{}", self.value);
                 Vec::new()
             }
             Message::DownPressed => {
                 self.value -= 1;
-                println!("{}", self.value);
                 Vec::new()
             }
         }
@@ -42,6 +40,7 @@ impl Model for Counter {
 }
 
 pub fn main() {
+    pretty_env_logger::init();
     App::build()
         .add_plugins(DefaultPlugins)
         .add_plugin(UiPlugin::<Counter>::default())
@@ -50,10 +49,11 @@ pub fn main() {
 }
 
 fn startup(mut commands: Commands) {
-    UiComponents::new(Counter {
-        value: 0,
-        state: Default::default()
-    }).spawn(&mut commands);
+    commands.spawn(())
+        .with(Ui::new(Counter {
+            value: 0,
+            state: Default::default()
+        }));
 
     commands.spawn(Camera2dComponents::default());
 }
