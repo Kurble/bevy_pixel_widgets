@@ -48,12 +48,13 @@ pub fn main() {
         .run();
 }
 
-fn startup(mut commands: Commands) {
+fn startup(mut commands: Commands, assets: Res<AssetServer>) {
+    let stylesheet: Handle<Stylesheet> =  assets.load("style.pwss");
+
     commands.spawn(())
         .with(Ui::new(Counter {
             value: 0,
             state: Default::default()
-        }));
-
-    commands.spawn(Camera2dComponents::default());
+        }))
+        .with(stylesheet);
 }

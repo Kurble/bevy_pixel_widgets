@@ -11,6 +11,7 @@ use bevy::render::renderer::RenderContext;
 use pixel_widgets::Model;
 
 use crate::pipeline::UI_PIPELINE_HANDLE;
+use crate::style::Stylesheet;
 
 use super::*;
 
@@ -192,9 +193,10 @@ fn render_ui<M: Model + Send + Sync>(
     mut shaders: ResMut<Assets<Shader>>,
     mut pipeline_compiler: ResMut<PipelineCompiler>,
     mut render_resource_bindings: ResMut<RenderResourceBindings>,
+    mut stylesheets: ResMut<Assets<Stylesheet>>,
     render_resource_context: Res<Box<dyn RenderResourceContext>>,
     windows: Res<Windows>,
-    mut query: Query<&mut Ui<M>>,
+    mut query: Query<(&mut Ui<M>, &Handle<Stylesheet>)>,
 ) {
     let window = windows.get_primary().unwrap();
     let new_window_size =
@@ -269,9 +271,14 @@ fn render_ui<M: Model + Send + Sync>(
     draw.set_pipeline(&pipeline);
     let mut bind_group_set = false;
 
-    for mut ui in query.iter_mut() {
+    for (mut ui, stylesheet) in query.iter_mut() {
+        let textures = if let Some(&mut Stylesheet { ref mut textures, .. }) = stylesheets.get_mut(stylesheet) {
+            textures
+        } else {
+            continue;
+        };
+
         let &mut Ui {
-            ref mut textures,
             ref mut draw_commands,
             ref mut vertex_buffer,
             ref mut ui,
@@ -341,7 +348,9 @@ fn render_ui<M: Model + Send + Sync>(
                             ..TextureDescriptor::default()
                         });
 
-                        textures.insert(id, texture_id);
+                        if let Some(overwritten) = textures.insert(id, texture_id) {
+                            render_resource_context.remove_texture(overwritten);
+                        }
 
                         if data.len() > 0 {
                             let texture_data = render_resource_context.create_buffer_with_data(

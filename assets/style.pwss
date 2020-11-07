@@ -1,0 +1,21 @@
+column {
+    align-horizontal: center;
+}
+
+button {
+    background: "btn.9.png";
+    padding: 5;
+}
+
+button :hover {
+    background: "btn_hov.9.png";
+}
+
+button :hover > text {
+    color: #f00;
+}
+
+text {
+    text-size: 24;
+    padding: 3;
+}

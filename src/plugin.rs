@@ -5,15 +5,18 @@ use bevy::render::render_graph::*;
 use pixel_widgets::Model;
 
 use crate::event::update_ui;
-use crate::pixel_widgets_node::UiNode;
 use crate::pipeline::{build_ui_pipeline, UI_PIPELINE_HANDLE};
+use crate::pixel_widgets_node::UiNode;
 use crate::UiPlugin;
+use crate::style::{Stylesheet, StylesheetLoader};
 
 const PIXEL_WIDGETS: &'static str = "pixel_widgets";
 
 impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
     fn build(&self, app: &mut AppBuilder) {
         app.add_system(update_ui::<M>.system());
+        app.add_asset::<Stylesheet>();
+        app.init_asset_loader::<StylesheetLoader>();
 
         let resources = app.resources();
 
@@ -63,13 +66,14 @@ impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
             .unwrap();
 
         if msaa.samples > 1 {
-            render_graph.add_slot_edge(
-                base::node::MAIN_SAMPLED_COLOR_ATTACHMENT,
-                WindowSwapChainNode::OUT_TEXTURE,
-                PIXEL_WIDGETS,
-                "color_attachment",
-            )
-            .unwrap();
+            render_graph
+                .add_slot_edge(
+                    base::node::MAIN_SAMPLED_COLOR_ATTACHMENT,
+                    WindowSwapChainNode::OUT_TEXTURE,
+                    PIXEL_WIDGETS,
+                    "color_attachment",
+                )
+                .unwrap();
         }
         render_graph
             .add_node_edge(base::node::MAIN_PASS, PIXEL_WIDGETS)

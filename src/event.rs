@@ -8,6 +8,7 @@ use pixel_widgets::event::{Event, Key, Modifiers};
 use pixel_widgets::prelude::*;
 
 use crate::Ui;
+use crate::style::Stylesheet;
 
 pub struct State {
     keyboard: EventReader<KeyboardInput>,
@@ -44,7 +45,8 @@ pub fn update_ui<M: Model + Send + Sync>(
     cursor_moved_events: Res<Events<CursorMoved>>,
     mouse_wheel_events: Res<Events<MouseWheel>>,
     window_resize_events: Res<Events<WindowResized>>,
-    mut ui: Query<&mut Ui<M>>,
+    stylesheets: Res<Assets<Stylesheet>>,
+    mut ui: Query<(&mut Ui<M>, Option<&Handle<Stylesheet>>)>,
 ) {
     let mut events = Vec::new();
 
@@ -114,12 +116,16 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
     }
 
-    for mut ui in ui.iter_mut() {
+    for (mut ui, stylesheet) in ui.iter_mut() {
         let &mut Ui {
             ref mut ui,
             ref mut receiver,
             ..
         } = &mut *ui;
+
+        if let Some(stylesheet) = stylesheet.and_then(|s| stylesheets.get(s)) {
+            ui.replace_stylesheet(stylesheet.style.clone());
+        }
 
         // process async events
         for cmd in receiver.get_mut().unwrap().try_iter() {
