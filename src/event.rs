@@ -12,6 +12,7 @@ use crate::style::Stylesheet;
 
 pub struct State {
     keyboard: EventReader<KeyboardInput>,
+    characters: EventReader<ReceivedCharacter>,
     mouse_button: EventReader<MouseButtonInput>,
     cursor_move: EventReader<CursorMoved>,
     mouse_wheel: EventReader<MouseWheel>,
@@ -23,6 +24,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             keyboard: Default::default(),
+            characters: Default::default(),
             mouse_button: Default::default(),
             cursor_move: Default::default(),
             mouse_wheel: Default::default(),
@@ -41,6 +43,7 @@ pub fn update_ui<M: Model + Send + Sync>(
     mut state: Local<State>,
     windows: Res<Windows>,
     keyboard_events: Res<Events<KeyboardInput>>,
+    character_events: Res<Events<ReceivedCharacter>>,
     mouse_button_events: Res<Events<MouseButtonInput>>,
     cursor_moved_events: Res<Events<CursorMoved>>,
     mouse_wheel_events: Res<Events<MouseWheel>>,
@@ -78,9 +81,6 @@ pub fn update_ui<M: Model + Send + Sync>(
         match event {
             KeyboardInput { key_code, state: ElementState::Pressed, .. } => {
                 if let Some(key) = key_code.and_then(translate_key_code) {
-                    if let Some(text) = translate_key_to_text(key, state.modifiers) {
-                        events.push(Event::Text(text));
-                    }
                     events.push(Event::Press(key));
                 }
             }
@@ -90,6 +90,10 @@ pub fn update_ui<M: Model + Send + Sync>(
                 }
             }
         }
+    }
+
+    for event in state.characters.iter(&character_events) {
+        events.push(Event::Text(event.char));
     }
 
     for event in state.cursor_move.iter(&cursor_moved_events) {
@@ -193,85 +197,6 @@ fn translate_key_code(key_code: KeyCode) -> Option<Key> {
         KeyCode::Down => Key::Down,
         _ => None?,
     })
-}
-
-fn translate_key_to_text(key_code: Key, modifiers: Modifiers) -> Option<char> {
-    match (key_code, modifiers.shift) {
-        (Key::A, false) => Some('a'),
-        (Key::B, false) => Some('b'),
-        (Key::C, false) => Some('c'),
-        (Key::D, false) => Some('d'),
-        (Key::E, false) => Some('e'),
-        (Key::F, false) => Some('f'),
-        (Key::G, false) => Some('g'),
-        (Key::H, false) => Some('h'),
-        (Key::I, false) => Some('i'),
-        (Key::J, false) => Some('j'),
-        (Key::K, false) => Some('k'),
-        (Key::L, false) => Some('l'),
-        (Key::M, false) => Some('m'),
-        (Key::N, false) => Some('n'),
-        (Key::O, false) => Some('o'),
-        (Key::P, false) => Some('p'),
-        (Key::Q, false) => Some('q'),
-        (Key::R, false) => Some('r'),
-        (Key::S, false) => Some('s'),
-        (Key::T, false) => Some('t'),
-        (Key::U, false) => Some('u'),
-        (Key::V, false) => Some('v'),
-        (Key::W, false) => Some('w'),
-        (Key::X, false) => Some('x'),
-        (Key::Y, false) => Some('y'),
-        (Key::Z, false) => Some('z'),
-        (Key::A, true) => Some('A'),
-        (Key::B, true) => Some('B'),
-        (Key::C, true) => Some('C'),
-        (Key::D, true) => Some('D'),
-        (Key::E, true) => Some('E'),
-        (Key::F, true) => Some('F'),
-        (Key::G, true) => Some('G'),
-        (Key::H, true) => Some('H'),
-        (Key::I, true) => Some('I'),
-        (Key::J, true) => Some('J'),
-        (Key::K, true) => Some('K'),
-        (Key::L, true) => Some('L'),
-        (Key::M, true) => Some('M'),
-        (Key::N, true) => Some('N'),
-        (Key::O, true) => Some('O'),
-        (Key::P, true) => Some('P'),
-        (Key::Q, true) => Some('Q'),
-        (Key::R, true) => Some('R'),
-        (Key::S, true) => Some('S'),
-        (Key::T, true) => Some('T'),
-        (Key::U, true) => Some('U'),
-        (Key::V, true) => Some('V'),
-        (Key::W, true) => Some('W'),
-        (Key::X, true) => Some('X'),
-        (Key::Y, true) => Some('Y'),
-        (Key::Z, true) => Some('Z'),
-        (Key::Key0, false) => Some('0'),
-        (Key::Key1, false) => Some('1'),
-        (Key::Key2, false) => Some('2'),
-        (Key::Key3, false) => Some('3'),
-        (Key::Key4, false) => Some('4'),
-        (Key::Key5, false) => Some('5'),
-        (Key::Key6, false) => Some('6'),
-        (Key::Key7, false) => Some('7'),
-        (Key::Key8, false) => Some('8'),
-        (Key::Key9, false) => Some('9'),
-        (Key::Key0, true) => Some('!'),
-        (Key::Key1, true) => Some('@'),
-        (Key::Key2, true) => Some('#'),
-        (Key::Key3, true) => Some('$'),
-        (Key::Key4, true) => Some('%'),
-        (Key::Key5, true) => Some('^'),
-        (Key::Key6, true) => Some('&'),
-        (Key::Key7, true) => Some('*'),
-        (Key::Key8, true) => Some('('),
-        (Key::Key9, true) => Some(')'),
-        (Key::Space, _) => Some(' '),
-        _ => None,
-    }
 }
 
 fn translate_mouse_button(button: MouseButton) -> Option<Key> {

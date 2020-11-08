@@ -1,3 +1,19 @@
+scroll {
+    width: shrink;
+    height: 100;
+    padding: 0 5 5 0;
+}
+
+scrollbar-horizontal {
+    width: 10;
+    background: #fff;
+}
+
+scrollbar-vertical {
+    width: 10;
+    background: #fff;
+}
+
 column {
     align-horizontal: center;
 }

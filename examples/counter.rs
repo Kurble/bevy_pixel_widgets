@@ -31,11 +31,16 @@ impl Model for Counter {
 
     fn view(&mut self) -> widget::Node<Message> {
         let mut state = self.state.tracker();
-        widget::Column::new()
-            .push(widget::Button::new(state.get("up"), widget::Text::new("Up")).on_clicked(Message::UpPressed))
-            .push(widget::Text::new(format!("Count: {}", self.value)))
-            .push(widget::Button::new(state.get("down"), widget::Text::new("Down")).on_clicked(Message::DownPressed))
-            .into_node()
+        widget::Scroll::new(
+            state.get("scroll"),
+            widget::Column::new()
+                .push(widget::Button::new(state.get("up"), widget::Text::new("Up")).on_clicked(Message::UpPressed))
+                .push(widget::Text::new(format!("Count: {}", self.value)))
+                .push(
+                    widget::Button::new(state.get("down"), widget::Text::new("Down")).on_clicked(Message::DownPressed),
+                ),
+        )
+        .into_node()
     }
 }
 
@@ -49,12 +54,13 @@ pub fn main() {
 }
 
 fn startup(mut commands: Commands, assets: Res<AssetServer>) {
-    let stylesheet: Handle<Stylesheet> =  assets.load("style.pwss");
+    let stylesheet: Handle<Stylesheet> = assets.load("style.pwss");
 
-    commands.spawn(())
+    commands
+        .spawn(())
         .with(Ui::new(Counter {
             value: 0,
-            state: Default::default()
+            state: Default::default(),
         }))
         .with(stylesheet);
 }

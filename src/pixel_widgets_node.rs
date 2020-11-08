@@ -1,9 +1,8 @@
 use std::marker::PhantomData;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use bevy::render::draw::RenderCommand;
 use bevy::render::pass::*;
 use bevy::render::pipeline::*;
 use bevy::render::render_graph::{CommandQueue, Node, ResourceSlotInfo, ResourceSlots, SystemNode};
@@ -24,6 +23,33 @@ pub struct UiNode<M: Model + Send + Sync> {
     color_resolve_target_indices: Vec<Option<usize>>,
     depth_stencil_attachment_input_index: Option<usize>,
     _marker: PhantomData<M>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum RenderCommand {
+    SetPipeline {
+        pipeline: Handle<PipelineDescriptor>,
+    },
+    SetScissorRect {
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    },
+    SetVertexBuffer {
+        slot: u32,
+        buffer: BufferId,
+        offset: u64,
+    },
+    SetBindGroup {
+        index: u32,
+        bind_group: BindGroupId,
+        dynamic_uniform_indices: Option<Arc<[u32]>>,
+    },
+    Draw {
+        vertices: Range<u32>,
+        instances: Range<u32>,
+    },
 }
 
 impl<M: Model + Send + Sync> Node for UiNode<M> {
@@ -70,14 +96,13 @@ impl<M: Model + Send + Sync> Node for UiNode<M> {
                         pass.set_pipeline(&pipeline);
                         draw_state.set_pipeline(&pipeline, pipelines.get(&pipeline).unwrap());
                     }
+                    RenderCommand::SetScissorRect { x, y, w, h } => {
+                        pass.set_scissor_rect(x, y, w, h);
+                    }
                     RenderCommand::SetVertexBuffer { slot, buffer, offset } => {
                         pass.set_vertex_buffer(slot, buffer, offset);
                         draw_state.set_vertex_buffer(slot, buffer);
                     }
-                    RenderCommand::SetIndexBuffer { buffer, offset } => {
-                        pass.set_index_buffer(buffer, offset);
-                        draw_state.set_index_buffer(buffer);
-                    },
                     RenderCommand::SetBindGroup {
                         index,
                         bind_group,
@@ -96,17 +121,6 @@ impl<M: Model + Send + Sync> Node for UiNode<M> {
                         );
                         draw_state.set_bind_group(index, bind_group);
                     }
-                    RenderCommand::DrawIndexed {
-                        indices,
-                        base_vertex,
-                        instances,
-                    } => {
-                        if draw_state.can_draw_indexed() {
-                            pass.draw_indexed(indices, base_vertex, instances);
-                        } else {
-                            println!("Could not draw indexed because the pipeline layout wasn't fully set for pipeline: {:?}", draw_state.pipeline);
-                        }
-                    },
                     RenderCommand::Draw { vertices, instances } => {
                         if draw_state.can_draw() {
                             pass.draw(vertices, instances);
@@ -202,14 +216,10 @@ fn render_ui<M: Model + Send + Sync>(
     let new_window_size =
         Some((window.width() as f32, window.height() as f32)).filter(|&new| state.current_window_size != Some(new));
 
-    let mut draw = {
+    let mut draw: Vec<RenderCommand> = {
         let mut command_buffer = state.command_buffer.lock().unwrap();
         command_buffer.clear();
-        Draw {
-            is_visible: false,
-            is_transparent: false,
-            render_commands: std::mem::replace(&mut command_buffer, Vec::new()),
-        }
+        std::mem::replace(&mut command_buffer, Vec::new())
     };
 
     let sampler_id = *state
@@ -267,8 +277,8 @@ fn render_ui<M: Model + Send + Sync>(
     let pipeline_descriptor = pipelines.get(&pipeline).unwrap();
     let bind_group_descriptor = pipeline_descriptor.get_layout().unwrap().get_bind_group(0).unwrap();
 
-    draw.clear_render_commands();
-    draw.set_pipeline(&pipeline);
+    draw.clear();
+    draw.push(RenderCommand::SetPipeline { pipeline });
     let mut bind_group_set = false;
 
     for (mut ui, stylesheet) in query.iter_mut() {
@@ -395,13 +405,29 @@ fn render_ui<M: Model + Send + Sync>(
         }
 
         if vertex_buffer.is_some() {
-            draw.set_vertex_buffer(0, vertex_buffer.unwrap(), 0);
+            draw.push(RenderCommand::SetVertexBuffer {
+                slot: 0,
+                buffer: vertex_buffer.unwrap(),
+                offset: 0
+            });
+            draw.push(RenderCommand::SetScissorRect {
+                x: 0,
+                y: 0,
+                w: window.width(),
+                h: window.height(),
+            });
 
             for command in draw_commands.iter() {
                 match command {
                     &pixel_widgets::draw::Command::Nop => (),
-                    &pixel_widgets::draw::Command::Clip { .. } => {
+                    &pixel_widgets::draw::Command::Clip { scissor } => {
                         // a bit sad that we can't really use this atm... no scrolling!
+                        draw.push(RenderCommand::SetScissorRect {
+                            x: scissor.left as u32,
+                            y: scissor.top as u32,
+                            w: scissor.width() as u32,
+                            h: scissor.height() as u32,
+                        })
                     }
                     &pixel_widgets::draw::Command::Colored { offset, count } => {
                         if !bind_group_set {
@@ -414,11 +440,15 @@ fn render_ui<M: Model + Send + Sync>(
                             let bind_group = render_resource_bindings
                                 .get_descriptor_bind_group(bind_group_descriptor.id)
                                 .unwrap();
-                            draw.set_bind_group(bind_group_descriptor.index, bind_group);
+                            draw.push(RenderCommand::SetBindGroup {
+                                index: bind_group_descriptor.index,
+                                bind_group: bind_group.id,
+                                dynamic_uniform_indices: None
+                            });
 
                             bind_group_set = true;
                         }
-                        draw.render_command(RenderCommand::Draw {
+                        draw.push(RenderCommand::Draw {
                             vertices: (offset as u32)..(offset + count) as u32,
                             instances: 0..1,
                         });
@@ -431,11 +461,15 @@ fn render_ui<M: Model + Send + Sync>(
                         let bind_group = render_resource_bindings
                             .get_descriptor_bind_group(bind_group_descriptor.id)
                             .unwrap();
-                        draw.set_bind_group(bind_group_descriptor.index, bind_group);
+                        draw.push(RenderCommand::SetBindGroup {
+                            index: bind_group_descriptor.index,
+                            bind_group: bind_group.id,
+                            dynamic_uniform_indices: None
+                        });
 
                         bind_group_set = true;
 
-                        draw.render_command(RenderCommand::Draw {
+                        draw.push(RenderCommand::Draw {
                             vertices: (offset as u32)..(offset + count) as u32,
                             instances: 0..1,
                         });
@@ -445,7 +479,7 @@ fn render_ui<M: Model + Send + Sync>(
         }
     }
 
-    *state.command_buffer.lock().unwrap() = draw.render_commands;
+    *state.command_buffer.lock().unwrap() = draw;
 }
 
 /// Tracks the current pipeline state to ensure draw calls are valid.
@@ -466,16 +500,8 @@ impl DrawState {
         self.vertex_buffers[index as usize] = Some(buffer);
     }
 
-    pub fn set_index_buffer(&mut self, buffer: BufferId) {
-        self.index_buffer = Some(buffer);
-    }
-
     pub fn can_draw(&self) -> bool {
         self.bind_groups.iter().all(|b| b.is_some()) && self.vertex_buffers.iter().all(|v| v.is_some())
-    }
-
-    pub fn can_draw_indexed(&self) -> bool {
-        self.can_draw() && self.index_buffer.is_some()
     }
 
     pub fn set_pipeline(&mut self, handle: &Handle<PipelineDescriptor>, descriptor: &PipelineDescriptor) {
