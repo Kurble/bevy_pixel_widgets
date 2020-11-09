@@ -353,6 +353,17 @@ fn render_ui<M: Model + Send + Sync>(
                             depth: 1,
                         };
 
+                        let padding = 256 - (size.width * 4) % 256;
+                        let data = if padding > 0 {
+                            data.chunks(size.width as usize * 4).fold(Vec::new(), |mut data, row| {
+                                data.extend_from_slice(row);
+                                data.extend(std::iter::repeat(0).take(padding as _));
+                                data
+                            })
+                        } else {
+                            data
+                        };
+
                         let texture_id = render_resource_context.create_texture(TextureDescriptor {
                             size,
                             ..TextureDescriptor::default()
@@ -375,7 +386,7 @@ fn render_ui<M: Model + Send + Sync>(
                             state.command_queue.copy_buffer_to_texture(
                                 texture_data,
                                 0,
-                                size.width * 4,
+                                size.width * 4 + padding,
                                 texture_id,
                                 [0; 3],
                                 0,
