@@ -5,15 +5,15 @@ use std::pin::Pin;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Mutex;
 
-use bevy::asset::AssetIoError;
+use bevy::asset::{AssetIoError, Handle};
+use bevy::ecs::Bundle;
 use bevy::render::renderer::*;
 use bevy::render::texture::{Extent3d, SamplerDescriptor, TextureDescriptor};
 use pixel_widgets::{Command, EventLoop, Model};
 pub use pixel_widgets::*;
-use pixel_widgets::draw::{DrawList, Update, Vertex};
+use pixel_widgets::draw::Update;
 use pixel_widgets::layout::Rectangle;
 use pixel_widgets::loader::Loader;
-use zerocopy::AsBytes;
 
 mod pixel_widgets_node;
 mod pipeline;
@@ -31,7 +31,7 @@ pub mod prelude {
         widget::IntoNode
     };
 
-    pub use super::{Ui, UiPlugin};
+    pub use super::{Ui, UiComponents, UiDraw, UiPlugin};
     pub use super::style::Stylesheet;
 }
 
@@ -40,8 +40,20 @@ pub struct UiPlugin<M: Model + Send + Sync>(PhantomData<M>);
 pub struct Ui<M: Model + Send + Sync> {
     ui: pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>,
     receiver: Mutex<Receiver<Command<M::Message>>>,
-    draw_commands: Vec<pixel_widgets::draw::Command>,
-    vertex_buffer: Option<BufferId>,
+}
+
+#[derive(Default)]
+pub struct UiDraw {
+    vertices: Option<BufferId>,
+    updates: Vec<pixel_widgets::draw::Update>,
+    commands: Vec<pixel_widgets::draw::Command>,
+}
+
+#[derive(Bundle)]
+pub struct UiComponents<M: Model + Send + Sync> {
+    pub ui: Ui<M>,
+    pub draw: UiDraw,
+    pub stylesheet: Handle<style::Stylesheet>,
 }
 
 pub struct EventSender<M: Model + Send + Sync> {
@@ -71,8 +83,6 @@ impl<M: Model + Send + Sync> Ui<M> {
         let (sender, receiver) = std::sync::mpsc::sync_channel(100);
         Ui {
             ui: pixel_widgets::Ui::new(model, EventSender { sender }, DisabledLoader, Rectangle::from_wh(1280.0, 720.0)),
-            draw_commands: Vec::default(),
-            vertex_buffer: None,
             receiver: Mutex::new(receiver),
         }
     }
@@ -93,6 +103,7 @@ impl<M: Model + Send + Sync> DerefMut for Ui<M> {
 }
 
 impl Loader for DisabledLoader {
+    #[allow(clippy::type_complexity)]
     type Load = Pin<Box<dyn Future<Output = Result<Vec<u8>, Self::Error>> + Send>>;
     type Wait = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
     type Error = AssetIoError;

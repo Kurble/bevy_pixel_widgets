@@ -7,8 +7,11 @@ use bevy::window::WindowResized;
 use pixel_widgets::event::{Event, Key, Modifiers};
 use pixel_widgets::prelude::*;
 
-use crate::Ui;
+use crate::{Ui, UiDraw};
 use crate::style::Stylesheet;
+use pixel_widgets::draw::{DrawList, Vertex};
+use bevy::render::renderer::{RenderResourceContext, BufferUsage, BufferInfo};
+use zerocopy::AsBytes;
 
 pub struct State {
     keyboard: EventReader<KeyboardInput>,
@@ -18,6 +21,7 @@ pub struct State {
     mouse_wheel: EventReader<MouseWheel>,
     window_resize: EventReader<WindowResized>,
     modifiers: Modifiers,
+    current_window_size: Option<(f32, f32)>,
 }
 
 impl Default for State {
@@ -34,11 +38,13 @@ impl Default for State {
                 alt: false,
                 shift: false,
                 logo: false,
-            }
+            },
+            current_window_size: Default::default(),
         }
     }
 }
 
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_ui<M: Model + Send + Sync>(
     mut state: Local<State>,
     windows: Res<Windows>,
@@ -49,9 +55,14 @@ pub fn update_ui<M: Model + Send + Sync>(
     mouse_wheel_events: Res<Events<MouseWheel>>,
     window_resize_events: Res<Events<WindowResized>>,
     stylesheets: Res<Assets<Stylesheet>>,
-    mut ui: Query<(&mut Ui<M>, Option<&Handle<Stylesheet>>)>,
+    render_resource_context: Res<Box<dyn RenderResourceContext>>,
+    mut ui: Query<(&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
 ) {
     let mut events = Vec::new();
+    let window = windows.get_primary().unwrap();
+    let resize =
+        Some((window.width() as f32, window.height() as f32)).filter(|&new| state.current_window_size != Some(new));
+    state.current_window_size = Some((window.width() as f32, window.height() as f32));
 
     for event in state.window_resize.iter(&window_resize_events) {
         events.push(Event::Resize(event.width as f32, event.height as f32));
@@ -97,7 +108,6 @@ pub fn update_ui<M: Model + Send + Sync>(
     }
 
     for event in state.cursor_move.iter(&cursor_moved_events) {
-        let window = windows.get_primary().unwrap();
         events.push(Event::Cursor(event.position.x(), window.height() as f32 - event.position.y()));
     }
 
@@ -120,12 +130,15 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
     }
 
-    for (mut ui, stylesheet) in ui.iter_mut() {
+    for (mut ui, mut draw, stylesheet) in ui.iter_mut() {
         let &mut Ui {
             ref mut ui,
             ref mut receiver,
-            ..
         } = &mut *ui;
+
+        if let Some((width, height)) = resize {
+            ui.resize(Rectangle::from_wh(width, height));
+        }
 
         if let Some(stylesheet) = stylesheet.and_then(|s| stylesheets.get(s)) {
             ui.replace_stylesheet(stylesheet.style.clone());
@@ -137,8 +150,36 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
 
         // process input events
-        for event in events.iter() {
-            ui.event(event.clone());
+        for &event in events.iter() {
+            ui.event(event);
+        }
+
+        // update ui drawing
+        if ui.needs_redraw() {
+            let DrawList {
+                updates,
+                commands,
+                vertices,
+            } = ui.draw();
+
+            draw.updates.extend(updates.into_iter());
+            draw.commands = commands;
+            if !vertices.is_empty() {
+                let old_buffer = draw.vertices.replace(render_resource_context.create_buffer_with_data(
+                    BufferInfo {
+                        size: vertices.len() * std::mem::size_of::<Vertex>(),
+                        buffer_usage: BufferUsage::VERTEX,
+                        mapped_at_creation: false,
+                    },
+                    vertices.as_bytes(),
+                ));
+
+                if let Some(b) = old_buffer {
+                    render_resource_context.remove_buffer(b)
+                }
+            } else if let Some(b) = draw.vertices.take() {
+                render_resource_context.remove_buffer(b)
+            }
         }
     }
 }

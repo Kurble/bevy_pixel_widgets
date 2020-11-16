@@ -21,6 +21,7 @@ pub struct StylesheetLoader;
 struct LoadContextLoader<'a>(&'a LoadContext<'a>);
 
 impl<'a> Loader for LoadContextLoader<'a> {
+    #[allow(clippy::type_complexity)]
     type Load = Pin<Box<dyn Future<Output = Result<Vec<u8>, Self::Error>> + Send + 'a>>;
     type Wait = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
     type Error = AssetIoError;

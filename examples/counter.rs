@@ -54,13 +54,12 @@ pub fn main() {
 }
 
 fn startup(mut commands: Commands, assets: Res<AssetServer>) {
-    let stylesheet: Handle<Stylesheet> = assets.load("style.pwss");
-
-    commands
-        .spawn(())
-        .with(Ui::new(Counter {
+    commands.spawn(UiComponents {
+        ui: Ui::new(Counter {
             value: 0,
             state: Default::default(),
-        }))
-        .with(stylesheet);
+        }),
+        draw: Default::default(),
+        stylesheet: assets.load("style.pwss"),
+    });
 }
