@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bevy = { git = "https://github.com/Kurble/bevy.git" }
-pixel-widgets = "0.5"
+pixel-widgets = "0.5.1"
 zerocopy = "0.3"
 anyhow = "1"
 log = "0.4"
