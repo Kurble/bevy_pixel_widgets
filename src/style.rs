@@ -1,12 +1,13 @@
-use anyhow::*;
-use bevy::asset::{LoadContext, AssetLoader, LoadedAsset, AssetIoError};
-use bevy::type_registry::TypeUuid;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use pixel_widgets::loader::Loader;
-use std::collections::HashMap;
+
+use anyhow::*;
+use bevy::asset::{AssetIoError, AssetLoader, LoadContext, LoadedAsset};
+use bevy::reflect::TypeUuid;
 use bevy::render::renderer::TextureId;
+use pixel_widgets::loader::Loader;
 
 #[derive(TypeUuid)]
 #[uuid = "182aa3fa-a529-4096-a26b-9b49dc5577a3"]

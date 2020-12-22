@@ -11,6 +11,7 @@ use crate::pipeline::UI_PIPELINE_HANDLE;
 use crate::style::Stylesheet;
 
 use super::*;
+use bevy::utils::HashMap;
 
 pub struct UiNode {
     command_queue: CommandQueue,
@@ -130,7 +131,7 @@ impl Node for UiNode {
 }
 
 impl SystemNode for UiNode {
-    fn get_system(&self, commands: &mut Commands) -> Box<dyn System> {
+    fn get_system(&self, commands: &mut Commands) -> Box<dyn System<In = (), Out = ()>> {
         let system = render_ui.system();
         commands.insert_local_resource(
             system.id(),
@@ -141,7 +142,7 @@ impl SystemNode for UiNode {
             },
         );
 
-        system
+        Box::new(system)
     }
 }
 
@@ -252,15 +253,16 @@ fn render_ui(
         ..PipelineSpecialization::default()
     };
 
+    let typed_handle = UI_PIPELINE_HANDLE.clone().typed();
     let pipeline =
-        if let Some(pipeline) = pipeline_compiler.get_specialized_pipeline(&UI_PIPELINE_HANDLE, &specialization) {
+        if let Some(pipeline) = pipeline_compiler.get_specialized_pipeline(&typed_handle, &specialization) {
             pipeline
         } else {
             pipeline_compiler.compile_pipeline(
                 &**render_resource_context,
                 &mut pipelines,
                 &mut shaders,
-                &UI_PIPELINE_HANDLE,
+                &typed_handle,
                 &specialization,
             )
         };
@@ -279,96 +281,107 @@ fn render_ui(
             continue;
         };
 
+        let mut new_textures = HashMap::default();
+        let mut updates = Vec::default();
+
         for update in ui_draw.updates.drain(..) {
             match update {
-                Update::TextureSubresource { id, offset, size, data } => {
-                    let size = Extent3d {
-                        width: size[0],
-                        height: size[1],
-                        depth: 1,
-                    };
-
-                    let padding = 256 - (size.width * 4) % 256;
-                    let data = if padding > 0 {
-                        data.chunks(size.width as usize * 4).fold(Vec::new(), |mut data, row| {
-                            data.extend_from_slice(row);
-                            data.extend(std::iter::repeat(0).take(padding as _));
-                            data
-                        })
-                    } else {
-                        data
-                    };
-
-                    let texture_data = render_resource_context.create_buffer_with_data(
-                        BufferInfo {
-                            size: data.len(),
-                            buffer_usage: BufferUsage::COPY_SRC,
-                            mapped_at_creation: false,
-                        },
-                        data.as_slice(),
-                    );
-
-                    let texture_id = textures.get(&id).cloned().unwrap();
-
-                    state.command_queue.copy_buffer_to_texture(
-                        texture_data,
-                        0,
-                        size.width * 4 + padding,
-                        texture_id,
-                        [offset[0], offset[1], 0],
-                        0,
-                        size,
-                    );
+                Update::Texture { id, size, data, atlas } => {
+                    new_textures.insert(id, (size, data, atlas));
                 }
-                Update::Texture { id, size, data, .. } => {
-                    let size = Extent3d {
-                        width: size[0],
-                        height: size[1],
-                        depth: 1,
-                    };
-
-                    let padding = 256 - (size.width * 4) % 256;
-                    let data = if padding > 0 {
-                        data.chunks(size.width as usize * 4).fold(Vec::new(), |mut data, row| {
-                            data.extend_from_slice(row);
-                            data.extend(std::iter::repeat(0).take(padding as _));
-                            data
-                        })
-                    } else {
-                        data
-                    };
-
-                    let texture_id = render_resource_context.create_texture(TextureDescriptor {
-                        size,
-                        ..TextureDescriptor::default()
-                    });
-
-                    if let Some(overwritten) = textures.insert(id, texture_id) {
-                        render_resource_context.remove_texture(overwritten);
-                    }
-
-                    if !data.is_empty() {
-                        let texture_data = render_resource_context.create_buffer_with_data(
-                            BufferInfo {
-                                size: data.len(),
-                                buffer_usage: BufferUsage::COPY_SRC,
-                                mapped_at_creation: false,
-                            },
-                            data.as_slice(),
-                        );
-
-                        state.command_queue.copy_buffer_to_texture(
-                            texture_data,
-                            0,
-                            size.width * 4 + padding,
-                            texture_id,
-                            [0; 3],
-                            0,
-                            size,
-                        );
-                    }
+                Update::TextureSubresource { id, offset, size, data } => {
+                    updates.push((id, offset, size, data));
                 }
             }
+        }
+
+        for (id, (size, data, _atlas)) in new_textures {
+            let size = Extent3d {
+                width: size[0],
+                height: size[1],
+                depth: 1,
+            };
+
+            let padding = 256 - (size.width * 4) % 256;
+            let data = if padding > 0 {
+                data.chunks(size.width as usize * 4).fold(Vec::new(), |mut data, row| {
+                    data.extend_from_slice(row);
+                    data.extend(std::iter::repeat(0).take(padding as _));
+                    data
+                })
+            } else {
+                data
+            };
+
+            let texture_id = render_resource_context.create_texture(TextureDescriptor {
+                size,
+                ..TextureDescriptor::default()
+            });
+
+            if let Some(overwritten) = textures.insert(id, texture_id) {
+                render_resource_context.remove_texture(overwritten);
+            }
+
+            if !data.is_empty() {
+                let texture_data = render_resource_context.create_buffer_with_data(
+                    BufferInfo {
+                        size: data.len(),
+                        buffer_usage: BufferUsage::COPY_SRC,
+                        mapped_at_creation: false,
+                    },
+                    data.as_slice(),
+                );
+
+                state.command_queue.copy_buffer_to_texture(
+                    texture_data,
+                    0,
+                    size.width * 4 + padding,
+                    texture_id,
+                    [0; 3],
+                    0,
+                    size,
+                );
+            }
+        }
+
+        for (id, offset, size, data) in updates {
+            let size = Extent3d {
+                width: size[0],
+                height: size[1],
+                depth: 1,
+            };
+
+            let padding = 256 - (size.width * 4) % 256;
+            let data = if padding > 0 {
+                data.chunks(size.width as usize * 4).fold(Vec::new(), |mut data, row| {
+                    data.extend_from_slice(row);
+                    data.extend(std::iter::repeat(0).take(padding as _));
+                    data
+                })
+            } else {
+                data
+            };
+
+            let texture_data = render_resource_context.create_buffer_with_data(
+                BufferInfo {
+                    size: data.len(),
+                    buffer_usage: BufferUsage::COPY_SRC,
+                    mapped_at_creation: false,
+                },
+                data.as_slice(),
+            );
+
+            let texture_id = textures.get(&id).cloned().unwrap();
+
+            state.command_queue.copy_buffer_to_texture(
+                texture_data,
+                0,
+                size.width * 4 + padding,
+                texture_id,
+                [offset[0], offset[1], 0],
+                0,
+                size,
+            );
         }
 
         if ui_draw.vertices.is_some() {
@@ -380,20 +393,20 @@ fn render_ui(
             draw.push(RenderCommand::SetScissorRect {
                 x: 0,
                 y: 0,
-                w: window.width(),
-                h: window.height(),
+                w: window.physical_width(),
+                h: window.physical_height(),
             });
 
             for command in ui_draw.commands.iter() {
                 match command {
                     pixel_widgets::draw::Command::Nop => (),
                     pixel_widgets::draw::Command::Clip { scissor } => {
-                        // a bit sad that we can't really use this atm... no scrolling!
+                        let scale = window.scale_factor() as f32;
                         draw.push(RenderCommand::SetScissorRect {
-                            x: scissor.left as u32,
-                            y: scissor.top as u32,
-                            w: scissor.width() as u32,
-                            h: scissor.height() as u32,
+                            x: (scissor.left * scale) as u32,
+                            y: (scissor.top * scale) as u32,
+                            w: (scissor.width() * scale) as u32,
+                            h: (scissor.height() * scale) as u32,
                         })
                     }
                     &pixel_widgets::draw::Command::Colored { offset, count } => {

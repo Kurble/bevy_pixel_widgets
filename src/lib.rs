@@ -31,7 +31,7 @@ pub mod prelude {
         widget::IntoNode
     };
 
-    pub use super::{Ui, UiComponents, UiDraw, UiPlugin};
+    pub use super::{Ui, UiBundle, UiDraw, UiPlugin};
     pub use super::style::Stylesheet;
 }
 
@@ -50,7 +50,7 @@ pub struct UiDraw {
 }
 
 #[derive(Bundle)]
-pub struct UiComponents<M: Model + Send + Sync> {
+pub struct UiBundle<M: Model + Send + Sync> {
     pub ui: Ui<M>,
     pub draw: UiDraw,
     pub stylesheet: Handle<style::Stylesheet>,

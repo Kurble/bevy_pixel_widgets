@@ -1,11 +1,11 @@
 use bevy::prelude::*;
+use bevy::reflect::TypeUuid;
 use bevy::render::pipeline::*;
 use bevy::render::shader::{ShaderStage, ShaderStages};
 use bevy::render::texture::TextureFormat;
-use bevy::type_registry::TypeUuid;
 
-pub const UI_PIPELINE_HANDLE: Handle<PipelineDescriptor> =
-    Handle::weak_from_u64(PipelineDescriptor::TYPE_UUID, 1132409877698723298);
+pub const UI_PIPELINE_HANDLE: HandleUntyped =
+    HandleUntyped::weak_from_u64(PipelineDescriptor::TYPE_UUID, 1132409877698723298);
 
 pub fn build_ui_pipeline(shaders: &mut Assets<Shader>) -> PipelineDescriptor {
     PipelineDescriptor {

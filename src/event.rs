@@ -108,7 +108,7 @@ pub fn update_ui<M: Model + Send + Sync>(
     }
 
     for event in state.cursor_move.iter(&cursor_moved_events) {
-        events.push(Event::Cursor(event.position.x(), window.height() as f32 - event.position.y()));
+        events.push(Event::Cursor(event.position.x, window.height() as f32 - event.position.y));
     }
 
     for event in state.mouse_wheel.iter(&mouse_wheel_events) {
