@@ -249,7 +249,7 @@ fn render_ui(
         ..PipelineSpecialization::default()
     };
 
-    let typed_handle = UI_PIPELINE_HANDLE.clone().typed();
+    let typed_handle = UI_PIPELINE_HANDLE.typed();
     let pipeline =
         if let Some(pipeline) = pipeline_compiler.get_specialized_pipeline(&typed_handle, &specialization) {
             pipeline

@@ -7,7 +7,7 @@ use bevy::window::WindowResized;
 use pixel_widgets::event::{Event, Key, Modifiers};
 use pixel_widgets::prelude::*;
 
-use crate::{Ui, UiDraw};
+use crate::{UiDraw, DynUi};
 use crate::style::Stylesheet;
 use pixel_widgets::draw::{DrawList, Vertex};
 use bevy::render::renderer::{RenderResourceContext, BufferUsage, BufferInfo};
@@ -33,7 +33,7 @@ impl Default for State {
 }
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn update_ui<M: Model + Send + Sync>(
+pub fn update_ui(
     mut state: Local<State>,
     windows: Res<Windows>,
     mut keyboard_events: EventReader<KeyboardInput>,
@@ -44,7 +44,7 @@ pub fn update_ui<M: Model + Send + Sync>(
     mut window_resize_events: EventReader<WindowResized>,
     stylesheets: Res<Assets<Stylesheet>>,
     render_resource_context: Res<Box<dyn RenderResourceContext>>,
-    mut ui: Query<(&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
+    mut ui: Query<(&mut Box<dyn DynUi>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
 ) {
     let mut events = Vec::new();
     let window = windows.get_primary().unwrap();
@@ -119,11 +119,6 @@ pub fn update_ui<M: Model + Send + Sync>(
     }
 
     for (mut ui, mut draw, stylesheet) in ui.iter_mut() {
-        let &mut Ui {
-            ref mut ui,
-            ref mut receiver,
-        } = &mut *ui;
-
         if let Some((width, height)) = resize {
             ui.resize(Rectangle::from_wh(width, height));
         }
@@ -133,9 +128,7 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
 
         // process async events
-        for cmd in receiver.get_mut().unwrap().try_iter() {
-            ui.command(cmd);
-        }
+        ui.process_commands();
 
         // process input events
         for &event in events.iter() {

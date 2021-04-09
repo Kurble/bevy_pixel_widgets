@@ -1,9 +1,8 @@
 use std::future::Future;
-use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, SyncSender};
-use std::sync::Mutex;
 
 use bevy::asset::{AssetIoError, Handle};
 use bevy::ecs::bundle::Bundle;
@@ -11,9 +10,11 @@ use bevy::render::renderer::*;
 use bevy::render::texture::{Extent3d, SamplerDescriptor, TextureDescriptor};
 use pixel_widgets::{Command, EventLoop, Model};
 pub use pixel_widgets::*;
-use pixel_widgets::draw::Update;
+use pixel_widgets::draw::{Update, DrawList};
 use pixel_widgets::layout::Rectangle;
 use pixel_widgets::loader::Loader;
+use pixel_widgets::stylesheet::Style;
+use pixel_widgets::event::Event;
 
 mod pixel_widgets_node;
 mod pipeline;
@@ -35,11 +36,54 @@ pub mod prelude {
     pub use super::style::Stylesheet;
 }
 
-pub struct UiPlugin<M: Model + Send + Sync>(PhantomData<M>);
+#[derive(Default)]
+pub struct UiPlugin;
 
 pub struct Ui<M: Model + Send + Sync> {
     ui: pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>,
     receiver: Mutex<Receiver<Command<M::Message>>>,
+}
+
+pub trait DynUi: Send + Sync {
+    fn resize(&mut self, viewport: Rectangle);
+
+    fn replace_stylesheet(&mut self, style: Arc<Style>);
+
+    fn process_commands(&mut self);
+
+    fn event(&mut self, event: Event);
+
+    fn needs_redraw(&self) -> bool;
+
+    fn draw(&mut self) -> DrawList;
+}
+
+impl<M: Model + Send + Sync> DynUi for Ui<M> {
+    fn resize(&mut self, viewport: Rectangle) {
+        self.ui.resize(viewport)
+    }
+
+    fn replace_stylesheet(&mut self, style: Arc<Style>) {
+        self.ui.replace_stylesheet(style)
+    }
+
+    fn process_commands(&mut self) {
+        for cmd in self.receiver.get_mut().unwrap().try_iter() {
+            self.ui.command(cmd);
+        }
+    }
+
+    fn event(&mut self, event: Event) {
+        self.ui.event(event)
+    }
+
+    fn needs_redraw(&self) -> bool {
+        self.ui.needs_redraw()
+    }
+
+    fn draw(&mut self) -> DrawList {
+        self.ui.draw()
+    }
 }
 
 #[derive(Default)]
@@ -50,8 +94,8 @@ pub struct UiDraw {
 }
 
 #[derive(Bundle)]
-pub struct UiBundle<M: Model + Send + Sync> {
-    pub ui: Ui<M>,
+pub struct UiBundle {
+    pub ui: Box<dyn DynUi>,
     pub draw: UiDraw,
     pub stylesheet: Handle<style::Stylesheet>,
 }
@@ -85,6 +129,12 @@ impl<M: Model + Send + Sync> Ui<M> {
             ui: pixel_widgets::Ui::new(model, EventSender { sender }, DisabledLoader, Rectangle::from_wh(1280.0, 720.0)),
             receiver: Mutex::new(receiver),
         }
+    }
+}
+
+impl<M: Model + Send + Sync> Into<Box<dyn DynUi>> for Ui<M> {
+    fn into(self) -> Box<dyn DynUi> {
+        Box::new(self)
     }
 }
 
