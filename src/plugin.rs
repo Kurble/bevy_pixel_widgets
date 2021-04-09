@@ -18,11 +18,13 @@ impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
 
-        let resources = app.resources();
-        let mut render_graph = resources.get_mut::<RenderGraph>().unwrap();
+        let world = app.world_mut();
+
         #[allow(clippy::redundant_pattern_matching)] // needed for the type annotation
-        if let Result::<&UiNode, _>::Err(_) = render_graph.get_node(PIXEL_WIDGETS) {
-            let msaa = resources.get::<Msaa>().unwrap();
+        if let Result::<&UiNode, _>::Err(_) = world.get_resource::<RenderGraph>().unwrap().get_node(PIXEL_WIDGETS) {
+            let msaa = world.get_resource::<Msaa>().unwrap();
+            let msaa_samples = msaa.samples;
+
             let pass_descriptor = PassDescriptor {
                 color_attachments: vec![msaa.color_attachment_descriptor(
                     TextureAttachment::Input("color_attachment".to_string()),
@@ -43,13 +45,14 @@ impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
                 sample_count: msaa.samples,
             };
 
+            let mut render_graph = world.get_resource_mut::<RenderGraph>().unwrap();
             render_graph.add_system_node(PIXEL_WIDGETS, UiNode::new(pass_descriptor));
             render_graph
                 .add_slot_edge(
                     base::node::PRIMARY_SWAP_CHAIN,
                     WindowSwapChainNode::OUT_TEXTURE,
                     PIXEL_WIDGETS,
-                    if msaa.samples > 1 {
+                    if msaa_samples > 1 {
                         "color_resolve_target"
                     } else {
                         "color_attachment"
@@ -66,7 +69,7 @@ impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
                 )
                 .unwrap();
 
-            if msaa.samples > 1 {
+            if msaa_samples > 1 {
                 render_graph
                     .add_slot_edge(
                         base::node::MAIN_SAMPLED_COLOR_ATTACHMENT,
@@ -80,9 +83,8 @@ impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
                 .add_node_edge(base::node::MAIN_PASS, PIXEL_WIDGETS)
                 .unwrap();
 
-            let mut pipelines = resources.get_mut::<Assets<PipelineDescriptor>>().unwrap();
-            let mut shaders = resources.get_mut::<Assets<Shader>>().unwrap();
-            pipelines.set_untracked(UI_PIPELINE_HANDLE, build_ui_pipeline(&mut shaders));
+            let pipeline = build_ui_pipeline(&mut world.get_resource_mut::<Assets<Shader>>().unwrap());
+            world.get_resource_mut::<Assets<PipelineDescriptor>>().unwrap().set_untracked(UI_PIPELINE_HANDLE, pipeline);
         }
     }
 }

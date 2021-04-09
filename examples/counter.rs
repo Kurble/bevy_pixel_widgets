@@ -53,8 +53,8 @@ pub fn main() {
         .run();
 }
 
-fn startup(commands: &mut Commands, assets: Res<AssetServer>) {
-    commands.spawn(UiBundle {
+fn startup(mut commands: Commands, assets: Res<AssetServer>) {
+    commands.spawn_bundle(UiBundle {
         ui: Ui::new(Counter {
             value: 0,
             state: Default::default(),

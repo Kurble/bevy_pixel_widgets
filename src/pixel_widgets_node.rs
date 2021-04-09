@@ -57,16 +57,15 @@ impl Node for UiNode {
 
     fn update(
         &mut self,
-        _world: &World,
-        resources: &Resources,
+        world: &World,
         render_context: &mut dyn RenderContext,
         input: &ResourceSlots,
         _output: &mut ResourceSlots,
     ) {
         self.command_queue.execute(render_context);
 
-        let render_resource_bindings = resources.get::<RenderResourceBindings>().unwrap();
-        let pipelines = resources.get::<Assets<PipelineDescriptor>>().unwrap();
+        let render_resource_bindings = world.get_resource::<RenderResourceBindings>().unwrap();
+        let pipelines = world.get_resource::<Assets<PipelineDescriptor>>().unwrap();
 
         for (i, color_attachment) in self.descriptor.color_attachments.iter_mut().enumerate() {
             if let Some(input_index) = self.color_attachment_input_indices[i] {
@@ -131,17 +130,14 @@ impl Node for UiNode {
 }
 
 impl SystemNode for UiNode {
-    fn get_system(&self, commands: &mut Commands) -> Box<dyn System<In = (), Out = ()>> {
-        let system = render_ui.system();
-        commands.insert_local_resource(
-            system.id(),
-            State {
+    fn get_system(&self) -> Box<dyn System<In = (), Out = ()>> {
+        let system = render_ui.system().config(|config| {
+            config.0 = Some(State {
                 command_queue: self.command_queue.clone(),
                 command_buffer: self.command_buffer.clone(),
                 sampler_id: None,
-            },
-        );
-
+            });
+        });
         Box::new(system)
     }
 }
@@ -219,30 +215,30 @@ fn render_ui(
         .get_or_insert_with(|| render_resource_context.create_sampler(&SamplerDescriptor::default()));
 
     let specialization = PipelineSpecialization {
-        vertex_buffer_descriptor: VertexBufferDescriptor {
+        vertex_buffer_layout: VertexBufferLayout {
             name: Default::default(),
             stride: 36,
             step_mode: Default::default(),
             attributes: vec![
-                VertexAttributeDescriptor {
+                VertexAttribute {
                     name: "Vertex_Position".into(),
                     offset: 0,
                     format: VertexFormat::Float2,
                     shader_location: 0,
                 },
-                VertexAttributeDescriptor {
+                VertexAttribute {
                     name: "Vertex_Uv".into(),
                     offset: 8,
                     format: VertexFormat::Float2,
                     shader_location: 1,
                 },
-                VertexAttributeDescriptor {
+                VertexAttribute {
                     name: "Vertex_Color".into(),
                     offset: 16,
                     format: VertexFormat::Float4,
                     shader_location: 2,
                 },
-                VertexAttributeDescriptor {
+                VertexAttribute {
                     name: "Vertex_Mode".into(),
                     offset: 32,
                     format: VertexFormat::Uint,

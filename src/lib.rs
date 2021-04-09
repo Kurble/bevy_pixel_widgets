@@ -6,7 +6,7 @@ use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Mutex;
 
 use bevy::asset::{AssetIoError, Handle};
-use bevy::ecs::Bundle;
+use bevy::ecs::bundle::Bundle;
 use bevy::render::renderer::*;
 use bevy::render::texture::{Extent3d, SamplerDescriptor, TextureDescriptor};
 use pixel_widgets::{Command, EventLoop, Model};

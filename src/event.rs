@@ -14,12 +14,6 @@ use bevy::render::renderer::{RenderResourceContext, BufferUsage, BufferInfo};
 use zerocopy::AsBytes;
 
 pub struct State {
-    keyboard: EventReader<KeyboardInput>,
-    characters: EventReader<ReceivedCharacter>,
-    mouse_button: EventReader<MouseButtonInput>,
-    cursor_move: EventReader<CursorMoved>,
-    mouse_wheel: EventReader<MouseWheel>,
-    window_resize: EventReader<WindowResized>,
     modifiers: Modifiers,
     current_window_size: Option<(f32, f32)>,
 }
@@ -27,12 +21,6 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            keyboard: Default::default(),
-            characters: Default::default(),
-            mouse_button: Default::default(),
-            cursor_move: Default::default(),
-            mouse_wheel: Default::default(),
-            window_resize: Default::default(),
             modifiers: Modifiers {
                 ctrl: false,
                 alt: false,
@@ -48,12 +36,12 @@ impl Default for State {
 pub fn update_ui<M: Model + Send + Sync>(
     mut state: Local<State>,
     windows: Res<Windows>,
-    keyboard_events: Res<Events<KeyboardInput>>,
-    character_events: Res<Events<ReceivedCharacter>>,
-    mouse_button_events: Res<Events<MouseButtonInput>>,
-    cursor_moved_events: Res<Events<CursorMoved>>,
-    mouse_wheel_events: Res<Events<MouseWheel>>,
-    window_resize_events: Res<Events<WindowResized>>,
+    mut keyboard_events: EventReader<KeyboardInput>,
+    mut character_events: EventReader<ReceivedCharacter>,
+    mut mouse_button_events: EventReader<MouseButtonInput>,
+    mut cursor_moved_events: EventReader<CursorMoved>,
+    mut mouse_wheel_events: EventReader<MouseWheel>,
+    mut window_resize_events: EventReader<WindowResized>,
     stylesheets: Res<Assets<Stylesheet>>,
     render_resource_context: Res<Box<dyn RenderResourceContext>>,
     mut ui: Query<(&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
@@ -64,11 +52,11 @@ pub fn update_ui<M: Model + Send + Sync>(
         Some((window.width() as f32, window.height() as f32)).filter(|&new| state.current_window_size != Some(new));
     state.current_window_size = Some((window.width() as f32, window.height() as f32));
 
-    for event in state.window_resize.iter(&window_resize_events) {
+    for event in window_resize_events.iter() {
         events.push(Event::Resize(event.width as f32, event.height as f32));
     }
 
-    for event in state.keyboard.iter(&keyboard_events) {
+    for event in keyboard_events.iter() {
         match event.key_code {
             Some(KeyCode::LControl) | Some(KeyCode::RControl) => {
                 state.modifiers.ctrl = event.state == ElementState::Pressed;
@@ -103,19 +91,19 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
     }
 
-    for event in state.characters.iter(&character_events) {
+    for event in character_events.iter() {
         events.push(Event::Text(event.char));
     }
 
-    for event in state.cursor_move.iter(&cursor_moved_events) {
+    for event in cursor_moved_events.iter() {
         events.push(Event::Cursor(event.position.x, window.height() as f32 - event.position.y));
     }
 
-    for event in state.mouse_wheel.iter(&mouse_wheel_events) {
+    for event in mouse_wheel_events.iter() {
         events.push(Event::Scroll(event.x, event.y))
     }
 
-    for event in state.mouse_button.iter(&mouse_button_events) {
+    for event in mouse_button_events.iter() {
         match event {
             MouseButtonInput { button, state: ElementState::Pressed } => {
                 if let Some(key) = translate_mouse_button(*button) {
