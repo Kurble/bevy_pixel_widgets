@@ -48,7 +48,7 @@ pub fn main() {
     pretty_env_logger::init();
     App::build()
         .add_plugins(DefaultPlugins)
-        .add_plugin(UiPlugin::default())
+        .add_plugin(UiPlugin::<Counter>::default())
         .add_startup_system(startup.system())
         .run();
 }
@@ -58,7 +58,7 @@ fn startup(mut commands: Commands, assets: Res<AssetServer>) {
         ui: Ui::new(Counter {
             value: 0,
             state: Default::default(),
-        }).into(),
+        }),
         draw: Default::default(),
         stylesheet: assets.load("style.pwss"),
     });

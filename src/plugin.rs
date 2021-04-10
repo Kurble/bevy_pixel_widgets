@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::render::pass::*;
 use bevy::render::pipeline::PipelineDescriptor;
 use bevy::render::render_graph::*;
+use pixel_widgets::Model;
 
 use crate::event::update_ui;
 use crate::pipeline::{build_ui_pipeline, UI_PIPELINE_HANDLE};
@@ -11,9 +12,9 @@ use crate::style::{Stylesheet, StylesheetLoader};
 
 const PIXEL_WIDGETS: &str = "pixel_widgets";
 
-impl Plugin for UiPlugin {
+impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(update_ui.system());
+        app.add_system(update_ui::<M>.system());
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
 
@@ -85,5 +86,11 @@ impl Plugin for UiPlugin {
             let pipeline = build_ui_pipeline(&mut world.get_resource_mut::<Assets<Shader>>().unwrap());
             world.get_resource_mut::<Assets<PipelineDescriptor>>().unwrap().set_untracked(UI_PIPELINE_HANDLE, pipeline);
         }
+    }
+}
+
+impl<M: Model + Send + Sync> Default for UiPlugin<M> {
+    fn default() -> Self {
+        Self(Default::default())
     }
 }
