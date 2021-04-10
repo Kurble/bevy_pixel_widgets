@@ -32,6 +32,14 @@ impl Default for State {
     }
 }
 
+impl<M: Model + Send + Sync> Ui<M> {
+    pub fn update_commands(&mut self) {
+        for cmd in self.receiver.get_mut().unwrap().try_iter() {
+            self.ui.command(cmd);
+        }
+    }
+}
+
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn update_ui<M: Model + Send + Sync>(
     mut state: Local<State>,
@@ -118,37 +126,30 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
     }
 
-    for (mut ui, mut draw, stylesheet) in ui.iter_mut() {
-        let &mut Ui {
-            ref mut ui,
-            ref mut receiver,
-        } = &mut *ui;
-
+    for (mut wrapper, mut draw, stylesheet) in ui.iter_mut() {
         if let Some((width, height)) = resize {
-            ui.resize(Rectangle::from_wh(width, height));
+            wrapper.ui.resize(Rectangle::from_wh(width, height));
         }
 
         if let Some(stylesheet) = stylesheet.and_then(|s| stylesheets.get(s)) {
-            ui.replace_stylesheet(stylesheet.style.clone());
+            wrapper.ui.replace_stylesheet(stylesheet.style.clone());
         }
 
         // process async events
-        for cmd in receiver.get_mut().unwrap().try_iter() {
-            ui.command(cmd);
-        }
+        wrapper.update_commands();
 
         // process input events
         for &event in events.iter() {
-            ui.event(event);
+            wrapper.ui.event(event);
         }
 
         // update ui drawing
-        if ui.needs_redraw() {
+        if wrapper.ui.needs_redraw() {
             let DrawList {
                 updates,
                 commands,
                 vertices,
-            } = ui.draw();
+            } = wrapper.ui.draw();
 
             draw.updates.extend(updates.into_iter());
             draw.commands = commands;
