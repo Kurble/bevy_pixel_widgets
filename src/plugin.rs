@@ -4,7 +4,7 @@ use bevy::render::pipeline::PipelineDescriptor;
 use bevy::render::render_graph::*;
 use pixel_widgets::Model;
 
-use crate::event::update_ui;
+use crate::update::update_ui;
 use crate::pipeline::{build_ui_pipeline, UI_PIPELINE_HANDLE};
 use crate::pixel_widgets_node::UiNode;
 use crate::UiPlugin;

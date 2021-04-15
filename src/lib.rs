@@ -18,7 +18,7 @@ use pixel_widgets::loader::Loader;
 mod pixel_widgets_node;
 mod pipeline;
 mod plugin;
-mod event;
+mod update;
 mod style;
 
 pub mod prelude {
