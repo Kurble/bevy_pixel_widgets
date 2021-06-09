@@ -5,21 +5,15 @@ layout(set = 0, binding = 1) uniform sampler s_Color;
 
 layout(location = 0) in vec2 v_Uv;
 layout(location = 1) in vec4 v_Color;
-layout(location = 2) flat in uint v_Mode;
+layout(location = 2) in float v_Mode;
 
 layout(location = 0) out vec4 Target0;
 
 void main() {
-    // Text
-    if (v_Mode == uint(0)) {
-        Target0 = v_Color * texture(sampler2D(t_Color, s_Color), v_Uv);
-
-        // Image
-    } else if (v_Mode == uint(1)) {
-        Target0 = v_Color * texture(sampler2D(t_Color, s_Color), v_Uv);
-
-        // 2D Geometry
-    } else if (v_Mode == uint(2)) {
-        Target0 = v_Color;
-    }
+    vec4 color = texture(sampler2D(t_Color, s_Color), v_Uv);
+    color.x = mix(color.x, 1.0, v_Mode);
+    color.y = mix(color.y, 1.0, v_Mode);
+    color.z = mix(color.z, 1.0, v_Mode);
+    color.w = mix(color.w, 1.0, v_Mode);
+    Target0 = v_Color * color;
 }
