@@ -1,16 +1,17 @@
-use bevy::input::keyboard::{KeyboardInput};
+use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::{MouseButtonInput, MouseWheel};
-use bevy::input::ElementState;
 use bevy::input::prelude::*;
+use bevy::input::ElementState;
 use bevy::prelude::*;
 use bevy::window::WindowResized;
 use pixel_widgets::event::{Event, Key, Modifiers};
 use pixel_widgets::prelude::*;
 
-use crate::{Ui, UiDraw};
 use crate::style::Stylesheet;
+use crate::{Ui, UiDraw};
+use bevy::ecs::system::{SystemParam, SystemParamFetch};
+use bevy::render::renderer::{BufferInfo, BufferUsage, RenderResourceContext};
 use pixel_widgets::draw::{DrawList, Vertex};
-use bevy::render::renderer::{RenderResourceContext, BufferUsage, BufferInfo};
 use zerocopy::AsBytes;
 
 pub struct State {
@@ -32,16 +33,16 @@ impl Default for State {
     }
 }
 
-impl<M: Model + Send + Sync> Ui<M> {
-    pub fn update_commands(&mut self) {
+impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Ui<M> {
+    pub fn update_commands(&mut self, resources: <M as UpdateModel>::Resources) {
         for cmd in self.receiver.get_mut().unwrap().try_iter() {
-            self.ui.command(cmd);
+            self.ui.command(cmd, resources);
         }
     }
 }
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn update_ui<M: Model + Send + Sync>(
+pub fn update_ui<M, R>(
     mut state: Local<State>,
     windows: Res<Windows>,
     mut keyboard_events: EventReader<KeyboardInput>,
@@ -53,7 +54,11 @@ pub fn update_ui<M: Model + Send + Sync>(
     stylesheets: Res<Assets<Stylesheet>>,
     render_resource_context: Res<Box<dyn RenderResourceContext>>,
     mut ui: Query<(&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
-) {
+    resources: R,
+) where
+    M: Model + Send + Sync + for<'a> UpdateModel<'a, Resources = &'a R>,
+    R: for<'a> SystemParam,
+{
     let mut events = Vec::new();
     let window = windows.get_primary().unwrap();
     let resize =
@@ -86,12 +91,20 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
 
         match event {
-            KeyboardInput { key_code, state: ElementState::Pressed, .. } => {
+            KeyboardInput {
+                key_code,
+                state: ElementState::Pressed,
+                ..
+            } => {
                 if let Some(key) = key_code.and_then(translate_key_code) {
                     events.push(Event::Press(key));
                 }
             }
-            KeyboardInput { key_code, state: ElementState::Released, .. } => {
+            KeyboardInput {
+                key_code,
+                state: ElementState::Released,
+                ..
+            } => {
                 if let Some(key) = key_code.and_then(translate_key_code) {
                     events.push(Event::Release(key));
                 }
@@ -104,7 +117,10 @@ pub fn update_ui<M: Model + Send + Sync>(
     }
 
     for event in cursor_moved_events.iter() {
-        events.push(Event::Cursor(event.position.x, window.height() as f32 - event.position.y));
+        events.push(Event::Cursor(
+            event.position.x,
+            window.height() as f32 - event.position.y,
+        ));
     }
 
     for event in mouse_wheel_events.iter() {
@@ -113,12 +129,18 @@ pub fn update_ui<M: Model + Send + Sync>(
 
     for event in mouse_button_events.iter() {
         match event {
-            MouseButtonInput { button, state: ElementState::Pressed } => {
+            MouseButtonInput {
+                button,
+                state: ElementState::Pressed,
+            } => {
                 if let Some(key) = translate_mouse_button(*button) {
                     events.push(Event::Press(key));
                 }
             }
-            MouseButtonInput { button, state: ElementState::Released } => {
+            MouseButtonInput {
+                button,
+                state: ElementState::Released,
+            } => {
                 if let Some(key) = translate_mouse_button(*button) {
                     events.push(Event::Release(key));
                 }
@@ -136,11 +158,11 @@ pub fn update_ui<M: Model + Send + Sync>(
         }
 
         // process async events
-        wrapper.update_commands();
+        wrapper.update_commands(&resources);
 
         // process input events
         for &event in events.iter() {
-            wrapper.ui.event(event);
+            wrapper.ui.event(event, &resources);
         }
 
         // update ui drawing

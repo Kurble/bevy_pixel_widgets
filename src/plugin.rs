@@ -2,19 +2,24 @@ use bevy::prelude::*;
 use bevy::render::pass::*;
 use bevy::render::pipeline::PipelineDescriptor;
 use bevy::render::render_graph::*;
-use pixel_widgets::Model;
+use pixel_widgets::{Model, UpdateModel};
 
-use crate::update::update_ui;
 use crate::pipeline::{build_ui_pipeline, UI_PIPELINE_HANDLE};
 use crate::pixel_widgets_node::UiNode;
-use crate::UiPlugin;
 use crate::style::{Stylesheet, StylesheetLoader};
+use crate::update::update_ui;
+use crate::UiPlugin;
+use bevy::ecs::system::{SystemParam, SystemParamFetch};
 
 const PIXEL_WIDGETS: &str = "pixel_widgets";
 
-impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
+impl<M, R> Plugin for UiPlugin<M>
+where
+    M: Model + Send + Sync + for<'a> UpdateModel<'a, Resources = &'a R>,
+    R: for<'a> SystemParam,
+{
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(update_ui::<M>.system());
+        app.add_system(update_ui::<M, R>.system());
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
 
@@ -84,7 +89,10 @@ impl<M: Model + Send + Sync> Plugin for UiPlugin<M> {
                 .unwrap();
 
             let pipeline = build_ui_pipeline(&mut world.get_resource_mut::<Assets<Shader>>().unwrap());
-            world.get_resource_mut::<Assets<PipelineDescriptor>>().unwrap().set_untracked(UI_PIPELINE_HANDLE, pipeline);
+            world
+                .get_resource_mut::<Assets<PipelineDescriptor>>()
+                .unwrap()
+                .set_untracked(UI_PIPELINE_HANDLE, pipeline);
         }
     }
 }

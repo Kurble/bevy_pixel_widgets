@@ -48,7 +48,7 @@ pub fn main() {
     pretty_env_logger::init();
     App::build()
         .add_plugins(DefaultPlugins)
-        .add_plugin(UiPlugin::<Counter>::default())
+        .add_plugin(Ui::<Counter>::plugin())
         .add_startup_system(startup.system())
         .run();
 }

@@ -9,37 +9,32 @@ use bevy::asset::{AssetIoError, Handle};
 use bevy::ecs::bundle::Bundle;
 use bevy::render::renderer::*;
 use bevy::render::texture::{Extent3d, SamplerDescriptor, TextureDescriptor};
-use pixel_widgets::{Command, EventLoop, Model};
-pub use pixel_widgets::*;
 use pixel_widgets::draw::Update;
 use pixel_widgets::layout::Rectangle;
 use pixel_widgets::loader::Loader;
+pub use pixel_widgets::*;
+use pixel_widgets::{Command, EventLoop, Model};
 
-mod pixel_widgets_node;
 mod pipeline;
+mod pixel_widgets_node;
 mod plugin;
-mod update;
 mod style;
+mod update;
 
 pub mod prelude {
     pub use pixel_widgets::{
-        Command,
-        layout::Rectangle,
-        Model,
-        stylesheet::Style,
-        tracker::ManagedState,
-        widget::IntoNode
+        layout::Rectangle, stylesheet::Style, tracker::ManagedState, widget::IntoNode, Command, Model,
     };
 
-    pub use super::{Ui, UiBundle, UiDraw, UiPlugin};
     pub use super::style::Stylesheet;
+    pub use super::{Ui, UiBundle, UiDraw, UiPlugin};
 }
 
 pub struct UiPlugin<M: Model + Send + Sync>(PhantomData<M>);
 
-pub struct Ui<M: Model + Send + Sync> {
+pub struct Ui<M: Model + Send + Sync + for<'a> UpdateModel<'a>> {
     ui: pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>,
-    receiver: Mutex<Receiver<Command<M::Message>>>,
+    receiver: Mutex<Receiver<Command<<M as Model>::Message>>>,
 }
 
 #[derive(Default)]
@@ -50,7 +45,7 @@ pub struct UiDraw {
 }
 
 #[derive(Bundle)]
-pub struct UiBundle<M: Model + Send + Sync> {
+pub struct UiBundle<M: Model + Send + Sync + for<'a> UpdateModel<'a>> {
     pub ui: Ui<M>,
     pub draw: UiDraw,
     pub stylesheet: Handle<style::Stylesheet>,
@@ -78,17 +73,26 @@ impl<M: Model + Send + Sync> Clone for EventSender<M> {
     }
 }
 
-impl<M: Model + Send + Sync> Ui<M> {
+impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Ui<M> {
     pub fn new(model: M) -> Self {
         let (sender, receiver) = std::sync::mpsc::sync_channel(100);
         Ui {
-            ui: pixel_widgets::Ui::new(model, EventSender { sender }, DisabledLoader, Rectangle::from_wh(1280.0, 720.0)),
+            ui: pixel_widgets::Ui::new(
+                model,
+                EventSender { sender },
+                DisabledLoader,
+                Rectangle::from_wh(1280.0, 720.0),
+            ),
             receiver: Mutex::new(receiver),
         }
     }
+
+    pub fn plugin() -> UiPlugin<M> {
+        UiPlugin::default()
+    }
 }
 
-impl<M: Model + Send + Sync> Deref for Ui<M> {
+impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Deref for Ui<M> {
     type Target = pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>;
 
     fn deref(&self) -> &Self::Target {
@@ -96,7 +100,7 @@ impl<M: Model + Send + Sync> Deref for Ui<M> {
     }
 }
 
-impl<M: Model + Send + Sync> DerefMut for Ui<M> {
+impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> DerefMut for Ui<M> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.ui
     }
