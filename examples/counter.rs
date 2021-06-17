@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_pixel_widgets::prelude::*;
-use bevy_pixel_widgets::widget;
+use bevy_pixel_widgets::{widget, UpdateModel};
 
 struct Counter {
     pub value: i32,
@@ -16,19 +16,6 @@ enum Message {
 impl Model for Counter {
     type Message = Message;
 
-    fn update(&mut self, message: Self::Message) -> Vec<Command<Message>> {
-        match message {
-            Message::UpPressed => {
-                self.value += 1;
-                Vec::new()
-            }
-            Message::DownPressed => {
-                self.value -= 1;
-                Vec::new()
-            }
-        }
-    }
-
     fn view(&mut self) -> widget::Node<Message> {
         let mut state = self.state.tracker();
         widget::Scroll::new(
@@ -41,6 +28,23 @@ impl Model for Counter {
                 ),
         )
         .into_node()
+    }
+}
+
+impl<'a> UpdateModel<'a> for Counter {
+    type State = Commands<'a>;
+
+    fn update(&mut self, message: Self::Message, _: &mut Commands) -> Vec<Command<Message>> {
+        match message {
+            Message::UpPressed => {
+                self.value += 1;
+                Vec::new()
+            }
+            Message::DownPressed => {
+                self.value -= 1;
+                Vec::new()
+            }
+        }
     }
 }
 

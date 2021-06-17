@@ -1,18 +1,18 @@
+use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::{MouseButtonInput, MouseWheel};
 use bevy::input::prelude::*;
 use bevy::input::ElementState;
 use bevy::prelude::*;
+use bevy::render::renderer::{BufferInfo, BufferUsage, RenderResourceContext};
 use bevy::window::WindowResized;
+use pixel_widgets::draw::{DrawList, Vertex};
 use pixel_widgets::event::{Event, Key, Modifiers};
 use pixel_widgets::prelude::*;
+use zerocopy::AsBytes;
 
 use crate::style::Stylesheet;
 use crate::{Ui, UiDraw};
-use bevy::ecs::system::{SystemParam, SystemParamFetch};
-use bevy::render::renderer::{BufferInfo, BufferUsage, RenderResourceContext};
-use pixel_widgets::draw::{DrawList, Vertex};
-use zerocopy::AsBytes;
 
 pub struct State {
     modifiers: Modifiers,
@@ -34,58 +34,62 @@ impl Default for State {
 }
 
 impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Ui<M> {
-    pub fn update_commands(&mut self, resources: <M as UpdateModel>::Resources) {
+    pub fn update_commands(&mut self, resources: &mut <M as UpdateModel>::State) {
         for cmd in self.receiver.get_mut().unwrap().try_iter() {
             self.ui.command(cmd, resources);
         }
     }
 }
 
+#[derive(SystemParam)]
+pub struct UpdateUiSystemParams<'a> {
+    pub state: Local<'a, State>,
+    pub windows: Res<'a, Windows>,
+    pub keyboard_events: EventReader<'a, KeyboardInput>,
+    pub character_events: EventReader<'a, ReceivedCharacter>,
+    pub mouse_button_events: EventReader<'a, MouseButtonInput>,
+    pub cursor_moved_events: EventReader<'a, CursorMoved>,
+    pub mouse_wheel_events: EventReader<'a, MouseWheel>,
+    pub window_resize_events: EventReader<'a, WindowResized>,
+    pub stylesheets: Res<'a, Assets<Stylesheet>>,
+    pub render_resource_context: Res<'a, Box<dyn RenderResourceContext>>,
+    pub commands: Commands<'a>,
+}
+
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn update_ui<M, R>(
-    mut state: Local<State>,
-    windows: Res<Windows>,
-    mut keyboard_events: EventReader<KeyboardInput>,
-    mut character_events: EventReader<ReceivedCharacter>,
-    mut mouse_button_events: EventReader<MouseButtonInput>,
-    mut cursor_moved_events: EventReader<CursorMoved>,
-    mut mouse_wheel_events: EventReader<MouseWheel>,
-    mut window_resize_events: EventReader<WindowResized>,
-    stylesheets: Res<Assets<Stylesheet>>,
-    render_resource_context: Res<Box<dyn RenderResourceContext>>,
+pub fn update_ui<M>(
+    mut params: UpdateUiSystemParams,
     mut ui: Query<(&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
-    resources: R,
 ) where
-    M: Model + Send + Sync + for<'a> UpdateModel<'a, Resources = &'a R>,
-    R: for<'a> SystemParam,
+    M: Model + Send + Sync + for<'a> UpdateModel<'a, State = Commands<'a>>,
 {
     let mut events = Vec::new();
-    let window = windows.get_primary().unwrap();
-    let resize =
-        Some((window.width() as f32, window.height() as f32)).filter(|&new| state.current_window_size != Some(new));
-    state.current_window_size = Some((window.width() as f32, window.height() as f32));
+    let window = params.windows.get_primary().unwrap();
+    let resize = Some((window.width() as f32, window.height() as f32))
+        .filter(|&new| params.state.current_window_size != Some(new));
+    params.state.current_window_size = Some((window.width() as f32, window.height() as f32));
 
-    for event in window_resize_events.iter() {
+    for event in params.window_resize_events.iter() {
         events.push(Event::Resize(event.width as f32, event.height as f32));
     }
 
-    for event in keyboard_events.iter() {
+    for event in params.keyboard_events.iter() {
         match event.key_code {
             Some(KeyCode::LControl) | Some(KeyCode::RControl) => {
-                state.modifiers.ctrl = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(state.modifiers));
+                params.state.modifiers.ctrl = event.state == ElementState::Pressed;
+                events.push(Event::Modifiers(params.state.modifiers));
             }
             Some(KeyCode::LAlt) | Some(KeyCode::RAlt) => {
-                state.modifiers.alt = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(state.modifiers));
+                params.state.modifiers.alt = event.state == ElementState::Pressed;
+                events.push(Event::Modifiers(params.state.modifiers));
             }
             Some(KeyCode::LShift) | Some(KeyCode::RShift) => {
-                state.modifiers.shift = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(state.modifiers));
+                params.state.modifiers.shift = event.state == ElementState::Pressed;
+                events.push(Event::Modifiers(params.state.modifiers));
             }
             Some(KeyCode::LWin) | Some(KeyCode::RWin) => {
-                state.modifiers.shift = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(state.modifiers));
+                params.state.modifiers.shift = event.state == ElementState::Pressed;
+                events.push(Event::Modifiers(params.state.modifiers));
             }
             _ => (),
         }
@@ -112,22 +116,22 @@ pub fn update_ui<M, R>(
         }
     }
 
-    for event in character_events.iter() {
+    for event in params.character_events.iter() {
         events.push(Event::Text(event.char));
     }
 
-    for event in cursor_moved_events.iter() {
+    for event in params.cursor_moved_events.iter() {
         events.push(Event::Cursor(
             event.position.x,
             window.height() as f32 - event.position.y,
         ));
     }
 
-    for event in mouse_wheel_events.iter() {
+    for event in params.mouse_wheel_events.iter() {
         events.push(Event::Scroll(event.x, event.y))
     }
 
-    for event in mouse_button_events.iter() {
+    for event in params.mouse_button_events.iter() {
         match event {
             MouseButtonInput {
                 button,
@@ -153,16 +157,16 @@ pub fn update_ui<M, R>(
             wrapper.ui.resize(Rectangle::from_wh(width, height));
         }
 
-        if let Some(stylesheet) = stylesheet.and_then(|s| stylesheets.get(s)) {
+        if let Some(stylesheet) = stylesheet.and_then(|s| params.stylesheets.get(s)) {
             wrapper.ui.replace_stylesheet(stylesheet.style.clone());
         }
 
         // process async events
-        wrapper.update_commands(&resources);
+        wrapper.update_commands(&mut params.commands);
 
         // process input events
         for &event in events.iter() {
-            wrapper.ui.event(event, &resources);
+            wrapper.ui.event(event, &mut params.commands);
         }
 
         // update ui drawing
@@ -176,20 +180,22 @@ pub fn update_ui<M, R>(
             draw.updates.extend(updates.into_iter());
             draw.commands = commands;
             if !vertices.is_empty() {
-                let old_buffer = draw.vertices.replace(render_resource_context.create_buffer_with_data(
-                    BufferInfo {
-                        size: vertices.len() * std::mem::size_of::<Vertex>(),
-                        buffer_usage: BufferUsage::VERTEX,
-                        mapped_at_creation: false,
-                    },
-                    vertices.as_bytes(),
-                ));
+                let old_buffer = draw
+                    .vertices
+                    .replace(params.render_resource_context.create_buffer_with_data(
+                        BufferInfo {
+                            size: vertices.len() * std::mem::size_of::<Vertex>(),
+                            buffer_usage: BufferUsage::VERTEX,
+                            mapped_at_creation: false,
+                        },
+                        vertices.as_bytes(),
+                    ));
 
                 if let Some(b) = old_buffer {
-                    render_resource_context.remove_buffer(b)
+                    params.render_resource_context.remove_buffer(b)
                 }
             } else if let Some(b) = draw.vertices.take() {
-                render_resource_context.remove_buffer(b)
+                params.render_resource_context.remove_buffer(b)
             }
         }
     }

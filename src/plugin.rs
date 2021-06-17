@@ -9,17 +9,15 @@ use crate::pixel_widgets_node::UiNode;
 use crate::style::{Stylesheet, StylesheetLoader};
 use crate::update::update_ui;
 use crate::UiPlugin;
-use bevy::ecs::system::{SystemParam, SystemParamFetch};
 
 const PIXEL_WIDGETS: &str = "pixel_widgets";
 
-impl<M, R> Plugin for UiPlugin<M>
+impl<M> Plugin for UiPlugin<M>
 where
-    M: Model + Send + Sync + for<'a> UpdateModel<'a, Resources = &'a R>,
-    R: for<'a> SystemParam,
+    M: Model + Send + Sync + for<'a> UpdateModel<'a, State = Commands<'a>>,
 {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(update_ui::<M, R>.system());
+        app.add_system(update_ui::<M>.system());
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
 
