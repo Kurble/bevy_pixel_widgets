@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bevy = "0.5"
-pixel-widgets = { version = "0.8", default-features = false }
+pixel-widgets = { path = "../pixel-widgets", default-features = false }
 zerocopy = "0.3"
 anyhow = "1"
 log = "0.4"

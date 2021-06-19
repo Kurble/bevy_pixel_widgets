@@ -9,15 +9,14 @@ use crate::pixel_widgets_node::UiNode;
 use crate::style::{Stylesheet, StylesheetLoader};
 use crate::update::update_ui;
 use crate::UiPlugin;
+use bevy::ecs::archetype::Archetype;
+use bevy::ecs::system::{SystemParam, SystemParamFetch, SystemParamState, SystemState};
+use std::marker::PhantomData;
 
 const PIXEL_WIDGETS: &str = "pixel_widgets";
 
-impl<M> Plugin for UiPlugin<M>
-where
-    M: Model + Send + Sync + for<'a> UpdateModel<'a, State = Commands<'a>>,
-{
+impl Plugin for UiPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(update_ui::<M>.system());
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
 
@@ -92,11 +91,5 @@ where
                 .unwrap()
                 .set_untracked(UI_PIPELINE_HANDLE, pipeline);
         }
-    }
-}
-
-impl<M: Model + Send + Sync> Default for UiPlugin<M> {
-    fn default() -> Self {
-        Self(Default::default())
     }
 }

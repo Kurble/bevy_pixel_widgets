@@ -23,18 +23,20 @@ mod update;
 
 pub mod prelude {
     pub use pixel_widgets::{
-        layout::Rectangle, stylesheet::Style, tracker::ManagedState, widget::IntoNode, Command, Model,
+        layout::Rectangle, stylesheet::Style, tracker::ManagedState, widget::IntoNode, Command, Model, UpdateModel,
     };
 
     pub use super::style::Stylesheet;
+    pub use super::update::update_ui;
     pub use super::{Ui, UiBundle, UiDraw, UiPlugin};
 }
 
-pub struct UiPlugin<M: Model + Send + Sync>(PhantomData<M>);
+pub struct UiPlugin;
 
-pub struct Ui<M: Model + Send + Sync + for<'a> UpdateModel<'a>> {
+pub struct Ui<M: Model + Send + Sync> {
     ui: pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>,
     receiver: Mutex<Receiver<Command<<M as Model>::Message>>>,
+    window: Option<(f32, f32)>,
 }
 
 #[derive(Default)]
@@ -84,15 +86,12 @@ impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Ui<M> {
                 Rectangle::from_wh(1280.0, 720.0),
             ),
             receiver: Mutex::new(receiver),
+            window: None,
         }
-    }
-
-    pub fn plugin() -> UiPlugin<M> {
-        UiPlugin::default()
     }
 }
 
-impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Deref for Ui<M> {
+impl<M: Model + Send + Sync> Deref for Ui<M> {
     type Target = pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>;
 
     fn deref(&self) -> &Self::Target {
@@ -100,7 +99,7 @@ impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Deref for Ui<M> {
     }
 }
 
-impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> DerefMut for Ui<M> {
+impl<M: Model + Send + Sync> DerefMut for Ui<M> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.ui
     }

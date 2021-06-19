@@ -1,4 +1,6 @@
-use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::{
+    ResState, SystemId, SystemParam, SystemParamFetch, SystemParamFunction, SystemParamState, SystemState,
+};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::{MouseButtonInput, MouseWheel};
 use bevy::input::prelude::*;
@@ -13,10 +15,11 @@ use zerocopy::AsBytes;
 
 use crate::style::Stylesheet;
 use crate::{Ui, UiDraw};
+use bevy::ecs::archetype::Archetype;
+use std::marker::PhantomData;
 
 pub struct State {
     modifiers: Modifiers,
-    current_window_size: Option<(f32, f32)>,
 }
 
 impl Default for State {
@@ -28,15 +31,65 @@ impl Default for State {
                 shift: false,
                 logo: false,
             },
-            current_window_size: Default::default(),
         }
     }
 }
 
-impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Ui<M> {
-    pub fn update_commands(&mut self, resources: &mut <M as UpdateModel>::State) {
+impl<'a, M: Model + Send + Sync + UpdateModel<'a>> Ui<M> {
+    pub fn update_commands(&mut self, resources: &mut <M as UpdateModel<'a>>::State) {
         for cmd in self.receiver.get_mut().unwrap().try_iter() {
             self.ui.command(cmd, resources);
+        }
+    }
+}
+
+pub struct Generic<'a, T> {
+    phantom: PhantomData<&'a ()>,
+    param: T,
+}
+
+pub struct GenericState<T> {
+    state: T,
+}
+
+impl<'a, T: SystemParam> SystemParam for Generic<'a, T> {
+    type Fetch = GenericState<T::Fetch>;
+}
+
+unsafe impl<T: SystemParamState> SystemParamState for GenericState<T> {
+    type Config = T::Config;
+
+    fn init(world: &mut World, system_state: &mut SystemState, config: Self::Config) -> Self {
+        Self {
+            state: T::init(world, system_state, config),
+        }
+    }
+
+    fn new_archetype(&mut self, archetype: &Archetype, system_state: &mut SystemState) {
+        self.state.new_archetype(archetype, system_state);
+    }
+
+    fn apply(&mut self, world: &mut World) {
+        self.state.apply(world);
+    }
+
+    fn default_config() -> Self::Config {
+        T::default_config()
+    }
+}
+
+impl<'a, T: SystemParamFetch<'a>> SystemParamFetch<'a> for GenericState<T> {
+    type Item = Generic<'a, T::Item>;
+
+    unsafe fn get_param(
+        state: &'a mut Self,
+        system_state: &'a SystemState,
+        world: &'a World,
+        change_tick: u32,
+    ) -> Self::Item {
+        Generic {
+            phantom: PhantomData,
+            param: T::get_param(&mut state.state, system_state, world, change_tick),
         }
     }
 }
@@ -53,21 +106,62 @@ pub struct UpdateUiSystemParams<'a> {
     pub window_resize_events: EventReader<'a, WindowResized>,
     pub stylesheets: Res<'a, Assets<Stylesheet>>,
     pub render_resource_context: Res<'a, Box<dyn RenderResourceContext>>,
-    pub commands: Commands<'a>,
+}
+
+pub struct UpdateUi<M>(PhantomData<M>);
+
+impl<M, Param>
+    SystemParamFunction<
+        (),
+        (),
+        (
+            UpdateUiSystemParams<'_>,
+            Param,
+            Query<'_, (&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
+        ),
+        (),
+    > for UpdateUi<M>
+where
+    M: Model + Send + Sync + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
+    Param: SystemParam,
+{
+    fn run(
+        &mut self,
+        _: (),
+        state: &mut <(
+            UpdateUiSystemParams<'_>,
+            Param,
+            Query<'_, (&'_ mut Ui<M>, &'_ mut UiDraw, Option<&'_ Handle<Stylesheet>>)>,
+        ) as SystemParam>::Fetch,
+        system_state: &SystemState,
+        world: &World,
+        change_tick: u32,
+    ) -> () {
+        let mut param = unsafe {
+            <<(
+                UpdateUiSystemParams<'_>,
+                Param,
+                Query<'_, (&'_ mut Ui<M>, &'_ mut UiDraw, Option<&'_ Handle<Stylesheet>>)>,
+            ) as SystemParam>::Fetch as SystemParamFetch<'_>>::get_param(
+                state, system_state, world, change_tick
+            )
+        };
+
+        //
+    }
 }
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn update_ui<M>(
-    mut params: UpdateUiSystemParams,
-    mut ui: Query<(&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
+pub fn update_ui<'a, 'b, 'c, 'd, 'e, 'f, 'g, M, Param>(
+    mut params: UpdateUiSystemParams<'a>,
+    mut custom: Param,
+    mut ui: Query<'b, (&'c mut Ui<M>, &'d mut UiDraw, Option<&'e Handle<Stylesheet>>)>,
 ) where
-    M: Model + Send + Sync + for<'a> UpdateModel<'a, State = Commands<'a>>,
+    M: 'f + Model + Send + Sync + UpdateModel<'g, State = Param>,
+    Param: 'g,
 {
     let mut events = Vec::new();
     let window = params.windows.get_primary().unwrap();
-    let resize = Some((window.width() as f32, window.height() as f32))
-        .filter(|&new| params.state.current_window_size != Some(new));
-    params.state.current_window_size = Some((window.width() as f32, window.height() as f32));
 
     for event in params.window_resize_events.iter() {
         events.push(Event::Resize(event.width as f32, event.height as f32));
@@ -153,8 +247,11 @@ pub fn update_ui<M>(
     }
 
     for (mut wrapper, mut draw, stylesheet) in ui.iter_mut() {
-        if let Some((width, height)) = resize {
-            wrapper.ui.resize(Rectangle::from_wh(width, height));
+        if Some((window.width() as f32, window.height() as f32)) != wrapper.window {
+            wrapper.window = Some((window.width() as f32, window.height() as f32));
+            wrapper
+                .ui
+                .resize(Rectangle::from_wh(window.width() as f32, window.height() as f32));
         }
 
         if let Some(stylesheet) = stylesheet.and_then(|s| params.stylesheets.get(s)) {
@@ -162,11 +259,11 @@ pub fn update_ui<M>(
         }
 
         // process async events
-        wrapper.update_commands(&mut params.commands);
+        //wrapper.update_commands(&mut custom);
 
         // process input events
         for &event in events.iter() {
-            wrapper.ui.event(event, &mut params.commands);
+            //wrapper.ui.event(event, &mut custom);
         }
 
         // update ui drawing
