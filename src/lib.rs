@@ -27,11 +27,11 @@ pub mod prelude {
     };
 
     pub use super::style::Stylesheet;
-    pub use super::update::update_ui;
+    pub use super::update::update_ui_system;
     pub use super::{Ui, UiBundle, UiDraw, UiPlugin};
 }
 
-pub struct UiPlugin;
+pub struct UiPlugin<M, Param>(PhantomData<(M, Param)>);
 
 pub struct Ui<M: Model + Send + Sync> {
     ui: pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>,

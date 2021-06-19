@@ -95,7 +95,7 @@ impl<'a, T: SystemParamFetch<'a>> SystemParamFetch<'a> for GenericState<T> {
 }
 
 #[derive(SystemParam)]
-pub struct UpdateUiSystemParams<'a> {
+pub struct UpdateUiSystemParams<'a, M: Model + Send + Sync> {
     pub state: Local<'a, State>,
     pub windows: Res<'a, Windows>,
     pub keyboard_events: EventReader<'a, KeyboardInput>,
@@ -106,193 +106,185 @@ pub struct UpdateUiSystemParams<'a> {
     pub window_resize_events: EventReader<'a, WindowResized>,
     pub stylesheets: Res<'a, Assets<Stylesheet>>,
     pub render_resource_context: Res<'a, Box<dyn RenderResourceContext>>,
+    pub query: Query<
+        'a,
+        (
+            &'static mut Ui<M>,
+            &'static mut UiDraw,
+            Option<&'static Handle<Stylesheet>>,
+        ),
+    >,
 }
 
-pub struct UpdateUi<M>(PhantomData<M>);
+pub struct UpdateUi<M, Param>(PhantomData<(M, Param)>);
 
-impl<M, Param>
-    SystemParamFunction<
-        (),
-        (),
-        (
-            UpdateUiSystemParams<'_>,
-            Param,
-            Query<'_, (&mut Ui<M>, &mut UiDraw, Option<&Handle<Stylesheet>>)>,
-        ),
-        (),
-    > for UpdateUi<M>
+pub fn update_ui_system<
+    M: 'static + Model + Send + Sync + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
+    Param: 'static + SystemParam + Send + Sync,
+>() -> impl System<In = (), Out = ()> {
+    use bevy::ecs::system::IntoSystem;
+    UpdateUi::<M, Param>(PhantomData).system()
+}
+
+impl<M, Param> SystemParamFunction<(), (), (UpdateUiSystemParams<'static, M>, Param), ()> for UpdateUi<M, Param>
 where
-    M: Model + Send + Sync + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
-    Param: SystemParam,
+    M: 'static + Model + Send + Sync + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
+    Param: 'static + SystemParam + Send + Sync,
+    Self: 'static + Send + Sync,
 {
     fn run(
         &mut self,
         _: (),
-        state: &mut <(
-            UpdateUiSystemParams<'_>,
-            Param,
-            Query<'_, (&'_ mut Ui<M>, &'_ mut UiDraw, Option<&'_ Handle<Stylesheet>>)>,
-        ) as SystemParam>::Fetch,
+        state: &mut <(UpdateUiSystemParams<'_, M>, Param) as SystemParam>::Fetch,
         system_state: &SystemState,
         world: &World,
         change_tick: u32,
     ) -> () {
-        let mut param = unsafe {
-            <<(
-                UpdateUiSystemParams<'_>,
-                Param,
-                Query<'_, (&'_ mut Ui<M>, &'_ mut UiDraw, Option<&'_ Handle<Stylesheet>>)>,
-            ) as SystemParam>::Fetch as SystemParamFetch<'_>>::get_param(
-                state, system_state, world, change_tick
+        let (mut params, mut custom): (UpdateUiSystemParams<M>, <Param::Fetch as SystemParamFetch<'_>>::Item) = unsafe {
+            <<(UpdateUiSystemParams<'_, M>, Param) as SystemParam>::Fetch as SystemParamFetch<'_>>::get_param(
+                state,
+                system_state,
+                world,
+                change_tick,
             )
         };
 
-        //
-    }
-}
+        let mut events = Vec::new();
+        let window = params.windows.get_primary().unwrap();
 
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn update_ui<'a, 'b, 'c, 'd, 'e, 'f, 'g, M, Param>(
-    mut params: UpdateUiSystemParams<'a>,
-    mut custom: Param,
-    mut ui: Query<'b, (&'c mut Ui<M>, &'d mut UiDraw, Option<&'e Handle<Stylesheet>>)>,
-) where
-    M: 'f + Model + Send + Sync + UpdateModel<'g, State = Param>,
-    Param: 'g,
-{
-    let mut events = Vec::new();
-    let window = params.windows.get_primary().unwrap();
-
-    for event in params.window_resize_events.iter() {
-        events.push(Event::Resize(event.width as f32, event.height as f32));
-    }
-
-    for event in params.keyboard_events.iter() {
-        match event.key_code {
-            Some(KeyCode::LControl) | Some(KeyCode::RControl) => {
-                params.state.modifiers.ctrl = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(params.state.modifiers));
-            }
-            Some(KeyCode::LAlt) | Some(KeyCode::RAlt) => {
-                params.state.modifiers.alt = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(params.state.modifiers));
-            }
-            Some(KeyCode::LShift) | Some(KeyCode::RShift) => {
-                params.state.modifiers.shift = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(params.state.modifiers));
-            }
-            Some(KeyCode::LWin) | Some(KeyCode::RWin) => {
-                params.state.modifiers.shift = event.state == ElementState::Pressed;
-                events.push(Event::Modifiers(params.state.modifiers));
-            }
-            _ => (),
+        for event in params.window_resize_events.iter() {
+            events.push(Event::Resize(event.width as f32, event.height as f32));
         }
 
-        match event {
-            KeyboardInput {
-                key_code,
-                state: ElementState::Pressed,
-                ..
-            } => {
-                if let Some(key) = key_code.and_then(translate_key_code) {
-                    events.push(Event::Press(key));
+        for event in params.keyboard_events.iter() {
+            match event.key_code {
+                Some(KeyCode::LControl) | Some(KeyCode::RControl) => {
+                    params.state.modifiers.ctrl = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(params.state.modifiers));
                 }
+                Some(KeyCode::LAlt) | Some(KeyCode::RAlt) => {
+                    params.state.modifiers.alt = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(params.state.modifiers));
+                }
+                Some(KeyCode::LShift) | Some(KeyCode::RShift) => {
+                    params.state.modifiers.shift = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(params.state.modifiers));
+                }
+                Some(KeyCode::LWin) | Some(KeyCode::RWin) => {
+                    params.state.modifiers.shift = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(params.state.modifiers));
+                }
+                _ => (),
             }
-            KeyboardInput {
-                key_code,
-                state: ElementState::Released,
-                ..
-            } => {
-                if let Some(key) = key_code.and_then(translate_key_code) {
-                    events.push(Event::Release(key));
+
+            match event {
+                KeyboardInput {
+                    key_code,
+                    state: ElementState::Pressed,
+                    ..
+                } => {
+                    if let Some(key) = key_code.and_then(translate_key_code) {
+                        events.push(Event::Press(key));
+                    }
+                }
+                KeyboardInput {
+                    key_code,
+                    state: ElementState::Released,
+                    ..
+                } => {
+                    if let Some(key) = key_code.and_then(translate_key_code) {
+                        events.push(Event::Release(key));
+                    }
                 }
             }
         }
-    }
 
-    for event in params.character_events.iter() {
-        events.push(Event::Text(event.char));
-    }
+        for event in params.character_events.iter() {
+            events.push(Event::Text(event.char));
+        }
 
-    for event in params.cursor_moved_events.iter() {
-        events.push(Event::Cursor(
-            event.position.x,
-            window.height() as f32 - event.position.y,
-        ));
-    }
+        for event in params.cursor_moved_events.iter() {
+            events.push(Event::Cursor(
+                event.position.x,
+                window.height() as f32 - event.position.y,
+            ));
+        }
 
-    for event in params.mouse_wheel_events.iter() {
-        events.push(Event::Scroll(event.x, event.y))
-    }
+        for event in params.mouse_wheel_events.iter() {
+            events.push(Event::Scroll(event.x, event.y))
+        }
 
-    for event in params.mouse_button_events.iter() {
-        match event {
-            MouseButtonInput {
-                button,
-                state: ElementState::Pressed,
-            } => {
-                if let Some(key) = translate_mouse_button(*button) {
-                    events.push(Event::Press(key));
+        for event in params.mouse_button_events.iter() {
+            match event {
+                MouseButtonInput {
+                    button,
+                    state: ElementState::Pressed,
+                } => {
+                    if let Some(key) = translate_mouse_button(*button) {
+                        events.push(Event::Press(key));
+                    }
+                }
+                MouseButtonInput {
+                    button,
+                    state: ElementState::Released,
+                } => {
+                    if let Some(key) = translate_mouse_button(*button) {
+                        events.push(Event::Release(key));
+                    }
                 }
             }
-            MouseButtonInput {
-                button,
-                state: ElementState::Released,
-            } => {
-                if let Some(key) = translate_mouse_button(*button) {
-                    events.push(Event::Release(key));
+        }
+
+        for (mut wrapper, mut draw, stylesheet) in params.query.iter_mut() {
+            if Some((window.width() as f32, window.height() as f32)) != wrapper.window {
+                wrapper.window = Some((window.width() as f32, window.height() as f32));
+                wrapper
+                    .ui
+                    .resize(Rectangle::from_wh(window.width() as f32, window.height() as f32));
+            }
+
+            if let Some(stylesheet) = stylesheet {
+                if let Some(stylesheet) = params.stylesheets.get(stylesheet) {
+                    wrapper.ui.replace_stylesheet(stylesheet.style.clone());
                 }
             }
-        }
-    }
 
-    for (mut wrapper, mut draw, stylesheet) in ui.iter_mut() {
-        if Some((window.width() as f32, window.height() as f32)) != wrapper.window {
-            wrapper.window = Some((window.width() as f32, window.height() as f32));
-            wrapper
-                .ui
-                .resize(Rectangle::from_wh(window.width() as f32, window.height() as f32));
-        }
+            // process async events
+            wrapper.update_commands(&mut custom);
 
-        if let Some(stylesheet) = stylesheet.and_then(|s| params.stylesheets.get(s)) {
-            wrapper.ui.replace_stylesheet(stylesheet.style.clone());
-        }
+            // process input events
+            for &event in events.iter() {
+                wrapper.ui.event(event, &mut custom);
+            }
 
-        // process async events
-        //wrapper.update_commands(&mut custom);
+            // update ui drawing
+            if wrapper.ui.needs_redraw() {
+                let DrawList {
+                    updates,
+                    commands,
+                    vertices,
+                } = wrapper.ui.draw();
 
-        // process input events
-        for &event in events.iter() {
-            //wrapper.ui.event(event, &mut custom);
-        }
+                draw.updates.extend(updates.into_iter());
+                draw.commands = commands;
+                if !vertices.is_empty() {
+                    let old_buffer = draw
+                        .vertices
+                        .replace(params.render_resource_context.create_buffer_with_data(
+                            BufferInfo {
+                                size: vertices.len() * std::mem::size_of::<Vertex>(),
+                                buffer_usage: BufferUsage::VERTEX,
+                                mapped_at_creation: false,
+                            },
+                            vertices.as_bytes(),
+                        ));
 
-        // update ui drawing
-        if wrapper.ui.needs_redraw() {
-            let DrawList {
-                updates,
-                commands,
-                vertices,
-            } = wrapper.ui.draw();
-
-            draw.updates.extend(updates.into_iter());
-            draw.commands = commands;
-            if !vertices.is_empty() {
-                let old_buffer = draw
-                    .vertices
-                    .replace(params.render_resource_context.create_buffer_with_data(
-                        BufferInfo {
-                            size: vertices.len() * std::mem::size_of::<Vertex>(),
-                            buffer_usage: BufferUsage::VERTEX,
-                            mapped_at_creation: false,
-                        },
-                        vertices.as_bytes(),
-                    ));
-
-                if let Some(b) = old_buffer {
+                    if let Some(b) = old_buffer {
+                        params.render_resource_context.remove_buffer(b)
+                    }
+                } else if let Some(b) = draw.vertices.take() {
                     params.render_resource_context.remove_buffer(b)
                 }
-            } else if let Some(b) = draw.vertices.take() {
-                params.render_resource_context.remove_buffer(b)
             }
         }
     }

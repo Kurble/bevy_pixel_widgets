@@ -1,3 +1,4 @@
+use bevy::ecs::system::{SystemParam, SystemParamFetch};
 use bevy::prelude::*;
 use bevy_pixel_widgets::prelude::*;
 use bevy_pixel_widgets::{widget, UpdateModel};
@@ -50,10 +51,10 @@ impl<'a> UpdateModel<'a> for Counter {
 
 pub fn main() {
     pretty_env_logger::init();
+
     App::build()
         .add_plugins(DefaultPlugins)
-        .add_plugin(UiPlugin)
-        .add_system(update_ui::<Counter, Commands>.system())
+        .add_plugin(UiPlugin::<Counter, Commands<'static>>::new())
         .add_startup_system(startup.system())
         .run();
 }

@@ -1,3 +1,7 @@
+use std::marker::PhantomData;
+
+use bevy::ecs::archetype::Archetype;
+use bevy::ecs::system::{SystemParam, SystemParamFetch, SystemParamState, SystemState};
 use bevy::prelude::*;
 use bevy::render::pass::*;
 use bevy::render::pipeline::PipelineDescriptor;
@@ -7,18 +11,26 @@ use pixel_widgets::{Model, UpdateModel};
 use crate::pipeline::{build_ui_pipeline, UI_PIPELINE_HANDLE};
 use crate::pixel_widgets_node::UiNode;
 use crate::style::{Stylesheet, StylesheetLoader};
-use crate::update::update_ui;
+use crate::update::*;
 use crate::UiPlugin;
-use bevy::ecs::archetype::Archetype;
-use bevy::ecs::system::{SystemParam, SystemParamFetch, SystemParamState, SystemState};
-use std::marker::PhantomData;
 
 const PIXEL_WIDGETS: &str = "pixel_widgets";
 
-impl Plugin for UiPlugin {
+impl<M, Param> UiPlugin<M, Param> {
+    pub fn new() -> Self {
+        UiPlugin(PhantomData)
+    }
+}
+
+impl<M, Param> Plugin for UiPlugin<M, Param>
+where
+    M: Send + Sync + Model + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
+    Param: 'static + Send + Sync + SystemParam,
+{
     fn build(&self, app: &mut AppBuilder) {
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
+        app.add_system(update_ui_system::<M, Param>());
 
         let world = app.world_mut();
 
