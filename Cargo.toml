@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bevy = "0.5"
-pixel-widgets = { path = "../pixel-widgets", default-features = false }
+pixel-widgets = { git = "https://github.com/Kurble/pixel-widgets.git", default-features = false }
 zerocopy = "0.3"
 anyhow = "1"
 log = "0.4"
