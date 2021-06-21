@@ -21,10 +21,14 @@ impl Model for Counter {
         widget::Scroll::new(
             state.get("scroll"),
             widget::Column::new()
-                .push(widget::Button::new(state.get("up"), widget::Text::new("Up")).on_clicked(Message::UpPressed))
+                .push(
+                    widget::Button::new(state.get("up"), widget::Text::new("Up"))
+                        .on_clicked(Message::UpPressed),
+                )
                 .push(widget::Text::new(format!("Count: {}", self.value)))
                 .push(
-                    widget::Button::new(state.get("down"), widget::Text::new("Down")).on_clicked(Message::DownPressed),
+                    widget::Button::new(state.get("down"), widget::Text::new("Down"))
+                        .on_clicked(Message::DownPressed),
                 ),
         )
         .into_node()
@@ -57,7 +61,7 @@ pub fn main() {
 
     App::build()
         .add_plugins(DefaultPlugins)
-        .add_plugin(UiPlugin::<Counter>::new())
+        .add_plugin(UiPlugin)
         .add_system(update_counter.system())
         .add_startup_system(startup.system())
         .run();

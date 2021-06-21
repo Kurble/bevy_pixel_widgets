@@ -1,10 +1,7 @@
-use std::marker::PhantomData;
-
 use bevy::prelude::*;
 use bevy::render::pass::*;
 use bevy::render::pipeline::PipelineDescriptor;
 use bevy::render::render_graph::*;
-use pixel_widgets::Model;
 
 use crate::pipeline::{build_ui_pipeline, UI_PIPELINE_HANDLE};
 use crate::pixel_widgets_node::UiNode;
@@ -12,18 +9,9 @@ use crate::style::{Stylesheet, StylesheetLoader};
 
 const PIXEL_WIDGETS: &str = "pixel_widgets";
 
-pub struct UiPlugin<M>(PhantomData<M>);
+pub struct UiPlugin;
 
-impl<M> UiPlugin<M> {
-    pub fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<M> Plugin for UiPlugin<M>
-where
-    M: Send + Sync + Model,
-{
+impl Plugin for UiPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_asset::<Stylesheet>();
         app.init_asset_loader::<StylesheetLoader>();
