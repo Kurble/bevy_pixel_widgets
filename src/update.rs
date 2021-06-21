@@ -1,6 +1,4 @@
-use bevy::ecs::system::{
-    ResState, SystemId, SystemParam, SystemParamFetch, SystemParamFunction, SystemParamState, SystemState,
-};
+use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::{MouseButtonInput, MouseWheel};
 use bevy::input::prelude::*;
@@ -15,8 +13,6 @@ use zerocopy::AsBytes;
 
 use crate::style::Stylesheet;
 use crate::{Ui, UiDraw};
-use bevy::ecs::archetype::Archetype;
-use std::marker::PhantomData;
 
 pub struct State {
     modifiers: Modifiers,
@@ -35,68 +31,20 @@ impl Default for State {
     }
 }
 
-impl<'a, M: Model + Send + Sync + UpdateModel<'a>> Ui<M> {
-    pub fn update_commands(&mut self, resources: &mut <M as UpdateModel<'a>>::State) {
+impl<M: Model + Send + Sync> Ui<M> {
+    pub fn update_commands<'a, S: 'a>(&mut self, resources: &mut S)
+    where
+        M: UpdateModel<'a, State = S>,
+    {
         for cmd in self.receiver.get_mut().unwrap().try_iter() {
             self.ui.command(cmd, resources);
         }
     }
 }
 
-pub struct Generic<'a, T> {
-    phantom: PhantomData<&'a ()>,
-    param: T,
-}
-
-pub struct GenericState<T> {
-    state: T,
-}
-
-impl<'a, T: SystemParam> SystemParam for Generic<'a, T> {
-    type Fetch = GenericState<T::Fetch>;
-}
-
-unsafe impl<T: SystemParamState> SystemParamState for GenericState<T> {
-    type Config = T::Config;
-
-    fn init(world: &mut World, system_state: &mut SystemState, config: Self::Config) -> Self {
-        Self {
-            state: T::init(world, system_state, config),
-        }
-    }
-
-    fn new_archetype(&mut self, archetype: &Archetype, system_state: &mut SystemState) {
-        self.state.new_archetype(archetype, system_state);
-    }
-
-    fn apply(&mut self, world: &mut World) {
-        self.state.apply(world);
-    }
-
-    fn default_config() -> Self::Config {
-        T::default_config()
-    }
-}
-
-impl<'a, T: SystemParamFetch<'a>> SystemParamFetch<'a> for GenericState<T> {
-    type Item = Generic<'a, T::Item>;
-
-    unsafe fn get_param(
-        state: &'a mut Self,
-        system_state: &'a SystemState,
-        world: &'a World,
-        change_tick: u32,
-    ) -> Self::Item {
-        Generic {
-            phantom: PhantomData,
-            param: T::get_param(&mut state.state, system_state, world, change_tick),
-        }
-    }
-}
-
 #[derive(SystemParam)]
 pub struct UpdateUiSystemParams<'a, M: Model + Send + Sync> {
-    pub state: Local<'a, State>,
+    state: Local<'a, State>,
     pub windows: Res<'a, Windows>,
     pub keyboard_events: EventReader<'a, KeyboardInput>,
     pub character_events: EventReader<'a, ReceivedCharacter>,
@@ -106,7 +54,7 @@ pub struct UpdateUiSystemParams<'a, M: Model + Send + Sync> {
     pub window_resize_events: EventReader<'a, WindowResized>,
     pub stylesheets: Res<'a, Assets<Stylesheet>>,
     pub render_resource_context: Res<'a, Box<dyn RenderResourceContext>>,
-    pub query: Query<
+    query: Query<
         'a,
         (
             &'static mut Ui<M>,
@@ -116,63 +64,35 @@ pub struct UpdateUiSystemParams<'a, M: Model + Send + Sync> {
     >,
 }
 
-pub struct UpdateUi<M, Param>(PhantomData<(M, Param)>);
-
-pub fn update_ui_system<
-    M: 'static + Model + Send + Sync + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
-    Param: 'static + SystemParam + Send + Sync,
->() -> impl System<In = (), Out = ()> {
-    use bevy::ecs::system::IntoSystem;
-    UpdateUi::<M, Param>(PhantomData).system()
-}
-
-impl<M, Param> SystemParamFunction<(), (), (UpdateUiSystemParams<'static, M>, Param), ()> for UpdateUi<M, Param>
-where
-    M: 'static + Model + Send + Sync + for<'a> UpdateModel<'a, State = <Param::Fetch as SystemParamFetch<'a>>::Item>,
-    Param: 'static + SystemParam + Send + Sync,
-    Self: 'static + Send + Sync,
-{
-    fn run(
-        &mut self,
-        _: (),
-        state: &mut <(UpdateUiSystemParams<'_, M>, Param) as SystemParam>::Fetch,
-        system_state: &SystemState,
-        world: &World,
-        change_tick: u32,
-    ) -> () {
-        let (mut params, mut custom): (UpdateUiSystemParams<M>, <Param::Fetch as SystemParamFetch<'_>>::Item) = unsafe {
-            <<(UpdateUiSystemParams<'_, M>, Param) as SystemParam>::Fetch as SystemParamFetch<'_>>::get_param(
-                state,
-                system_state,
-                world,
-                change_tick,
-            )
-        };
-
+impl<'a, M: Model + Send + Sync> UpdateUiSystemParams<'a, M> {
+    pub fn update<S: 'a>(mut self, mut state: S)
+    where
+        M: UpdateModel<'a, State = S>,
+    {
         let mut events = Vec::new();
-        let window = params.windows.get_primary().unwrap();
+        let window = self.windows.get_primary().unwrap();
 
-        for event in params.window_resize_events.iter() {
+        for event in self.window_resize_events.iter() {
             events.push(Event::Resize(event.width as f32, event.height as f32));
         }
 
-        for event in params.keyboard_events.iter() {
+        for event in self.keyboard_events.iter() {
             match event.key_code {
                 Some(KeyCode::LControl) | Some(KeyCode::RControl) => {
-                    params.state.modifiers.ctrl = event.state == ElementState::Pressed;
-                    events.push(Event::Modifiers(params.state.modifiers));
+                    self.state.modifiers.ctrl = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(self.state.modifiers));
                 }
                 Some(KeyCode::LAlt) | Some(KeyCode::RAlt) => {
-                    params.state.modifiers.alt = event.state == ElementState::Pressed;
-                    events.push(Event::Modifiers(params.state.modifiers));
+                    self.state.modifiers.alt = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(self.state.modifiers));
                 }
                 Some(KeyCode::LShift) | Some(KeyCode::RShift) => {
-                    params.state.modifiers.shift = event.state == ElementState::Pressed;
-                    events.push(Event::Modifiers(params.state.modifiers));
+                    self.state.modifiers.shift = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(self.state.modifiers));
                 }
                 Some(KeyCode::LWin) | Some(KeyCode::RWin) => {
-                    params.state.modifiers.shift = event.state == ElementState::Pressed;
-                    events.push(Event::Modifiers(params.state.modifiers));
+                    self.state.modifiers.shift = event.state == ElementState::Pressed;
+                    events.push(Event::Modifiers(self.state.modifiers));
                 }
                 _ => (),
             }
@@ -199,22 +119,22 @@ where
             }
         }
 
-        for event in params.character_events.iter() {
+        for event in self.character_events.iter() {
             events.push(Event::Text(event.char));
         }
 
-        for event in params.cursor_moved_events.iter() {
+        for event in self.cursor_moved_events.iter() {
             events.push(Event::Cursor(
                 event.position.x,
                 window.height() as f32 - event.position.y,
             ));
         }
 
-        for event in params.mouse_wheel_events.iter() {
+        for event in self.mouse_wheel_events.iter() {
             events.push(Event::Scroll(event.x, event.y))
         }
 
-        for event in params.mouse_button_events.iter() {
+        for event in self.mouse_button_events.iter() {
             match event {
                 MouseButtonInput {
                     button,
@@ -235,7 +155,7 @@ where
             }
         }
 
-        for (mut wrapper, mut draw, stylesheet) in params.query.iter_mut() {
+        for (mut wrapper, mut draw, stylesheet) in self.query.iter_mut() {
             if Some((window.width() as f32, window.height() as f32)) != wrapper.window {
                 wrapper.window = Some((window.width() as f32, window.height() as f32));
                 wrapper
@@ -244,17 +164,17 @@ where
             }
 
             if let Some(stylesheet) = stylesheet {
-                if let Some(stylesheet) = params.stylesheets.get(stylesheet) {
+                if let Some(stylesheet) = self.stylesheets.get(stylesheet) {
                     wrapper.ui.replace_stylesheet(stylesheet.style.clone());
                 }
             }
 
             // process async events
-            wrapper.update_commands(&mut custom);
+            wrapper.update_commands(&mut state);
 
             // process input events
             for &event in events.iter() {
-                wrapper.ui.event(event, &mut custom);
+                wrapper.ui.event(event, &mut state);
             }
 
             // update ui drawing
@@ -270,7 +190,7 @@ where
                 if !vertices.is_empty() {
                     let old_buffer = draw
                         .vertices
-                        .replace(params.render_resource_context.create_buffer_with_data(
+                        .replace(self.render_resource_context.create_buffer_with_data(
                             BufferInfo {
                                 size: vertices.len() * std::mem::size_of::<Vertex>(),
                                 buffer_usage: BufferUsage::VERTEX,
@@ -280,10 +200,10 @@ where
                         ));
 
                     if let Some(b) = old_buffer {
-                        params.render_resource_context.remove_buffer(b)
+                        self.render_resource_context.remove_buffer(b)
                     }
                 } else if let Some(b) = draw.vertices.take() {
-                    params.render_resource_context.remove_buffer(b)
+                    self.render_resource_context.remove_buffer(b)
                 }
             }
         }

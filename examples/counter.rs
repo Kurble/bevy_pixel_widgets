@@ -1,4 +1,3 @@
-use bevy::ecs::system::{SystemParam, SystemParamFetch};
 use bevy::prelude::*;
 use bevy_pixel_widgets::prelude::*;
 use bevy_pixel_widgets::{widget, UpdateModel};
@@ -33,9 +32,9 @@ impl Model for Counter {
 }
 
 impl<'a> UpdateModel<'a> for Counter {
-    type State = Commands<'a>;
+    type State = ();
 
-    fn update(&mut self, message: Self::Message, _: &mut Commands) -> Vec<Command<Message>> {
+    fn update(&mut self, message: Self::Message, _: &mut Self::State) -> Vec<Command<Message>> {
         match message {
             Message::UpPressed => {
                 self.value += 1;
@@ -49,12 +48,17 @@ impl<'a> UpdateModel<'a> for Counter {
     }
 }
 
+fn update_counter(params: UpdateUiSystemParams<Counter>, state: ()) {
+    params.update(state);
+}
+
 pub fn main() {
     pretty_env_logger::init();
 
     App::build()
         .add_plugins(DefaultPlugins)
-        .add_plugin(UiPlugin::<Counter, Commands<'static>>::new())
+        .add_plugin(UiPlugin::<Counter>::new())
+        .add_system(update_counter.system())
         .add_startup_system(startup.system())
         .run();
 }

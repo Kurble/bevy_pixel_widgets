@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -26,12 +25,12 @@ pub mod prelude {
         layout::Rectangle, stylesheet::Style, tracker::ManagedState, widget::IntoNode, Command, Model, UpdateModel,
     };
 
-    pub use super::style::Stylesheet;
-    pub use super::update::update_ui_system;
-    pub use super::{Ui, UiBundle, UiDraw, UiPlugin};
-}
+    pub use crate::plugin::UiPlugin;
+    pub use crate::update::UpdateUiSystemParams;
 
-pub struct UiPlugin<M, Param>(PhantomData<(M, Param)>);
+    pub use super::style::Stylesheet;
+    pub use super::{Ui, UiBundle, UiDraw};
+}
 
 pub struct Ui<M: Model + Send + Sync> {
     ui: pixel_widgets::Ui<M, EventSender<M>, DisabledLoader>,
@@ -47,7 +46,7 @@ pub struct UiDraw {
 }
 
 #[derive(Bundle)]
-pub struct UiBundle<M: Model + Send + Sync + for<'a> UpdateModel<'a>> {
+pub struct UiBundle<M: Model + Send + Sync> {
     pub ui: Ui<M>,
     pub draw: UiDraw,
     pub stylesheet: Handle<style::Stylesheet>,
@@ -75,7 +74,7 @@ impl<M: Model + Send + Sync> Clone for EventSender<M> {
     }
 }
 
-impl<M: Model + Send + Sync + for<'a> UpdateModel<'a>> Ui<M> {
+impl<M: Model + Send + Sync> Ui<M> {
     pub fn new(model: M) -> Self {
         let (sender, receiver) = std::sync::mpsc::sync_channel(100);
         Ui {
